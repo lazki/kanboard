@@ -1,8 +1,9 @@
 <?php
 
-namespace Model;
+namespace Kanboard\Model;
 
-use Event\SubtaskEvent;
+use PicoDb\Database;
+use Kanboard\Event\SubtaskEvent;
 use SimpleValidator\Validator;
 use SimpleValidator\Validators;
 
@@ -49,12 +50,13 @@ class Subtask extends Base
      */
     const EVENT_UPDATE = 'subtask.update';
     const EVENT_CREATE = 'subtask.create';
+    const EVENT_DELETE = 'subtask.delete';
 
     /**
      * Get available status
      *
      * @access public
-     * @return array
+     * @return string[]
      */
     public function getStatusList()
     {
@@ -78,6 +80,8 @@ class Subtask extends Base
 
         foreach ($subtasks as &$subtask) {
             $subtask['status_name'] = $status[$subtask['status']];
+            $subtask['timer_start_date'] = isset($subtask['timer_start_date']) ? $subtask['timer_start_date'] : 0;
+            $subtask['is_timer_started'] = ! empty($subtask['timer_start_date']);
         }
 
         return $subtasks;
@@ -101,12 +105,13 @@ class Subtask extends Base
                 Task::TABLE.'.title AS task_name',
                 Project::TABLE.'.name AS project_name'
             )
+            ->subquery($this->subtaskTimeTracking->getTimerQuery($user_id), 'timer_start_date')
             ->eq('user_id', $user_id)
             ->eq(Project::TABLE.'.is_active', Project::ACTIVE)
             ->in(Subtask::TABLE.'.status', $status)
             ->join(Task::TABLE, 'id', 'task_id')
             ->join(Project::TABLE, 'id', 'project_id', Task::TABLE)
-            ->filter(array($this, 'addStatusName'));
+            ->callback(array($this, 'addStatusName'));
     }
 
     /**
@@ -121,10 +126,15 @@ class Subtask extends Base
         return $this->db
                     ->table(self::TABLE)
                     ->eq('task_id', $task_id)
-                    ->columns(self::TABLE.'.*', User::TABLE.'.username', User::TABLE.'.name')
+                    ->columns(
+                        self::TABLE.'.*',
+                        User::TABLE.'.username',
+                        User::TABLE.'.name'
+                    )
+                    ->subquery($this->subtaskTimeTracking->getTimerQuery($this->userSession->getId()), 'timer_start_date')
                     ->join(User::TABLE, 'id', 'user_id')
                     ->asc(self::TABLE.'.position')
-                    ->filter(array($this, 'addStatusName'))
+                    ->callback(array($this, 'addStatusName'))
                     ->findAll();
     }
 
@@ -139,13 +149,13 @@ class Subtask extends Base
     public function getById($subtask_id, $more = false)
     {
         if ($more) {
-
             return $this->db
                         ->table(self::TABLE)
                         ->eq(self::TABLE.'.id', $subtask_id)
                         ->columns(self::TABLE.'.*', User::TABLE.'.username', User::TABLE.'.name')
+                        ->subquery($this->subtaskTimeTracking->getTimerQuery($this->userSession->getId()), 'timer_start_date')
                         ->join(User::TABLE, 'id', 'user_id')
-                        ->filter(array($this, 'addStatusName'))
+                        ->callback(array($this, 'addStatusName'))
                         ->findOne();
         }
 
@@ -162,6 +172,23 @@ class Subtask extends Base
     {
         $this->removeFields($values, array('another_subtask'));
         $this->resetFields($values, array('time_estimated', 'time_spent'));
+    }
+
+    /**
+     * Prepare data before insert
+     *
+     * @access public
+     * @param  array    $values    Form values
+     */
+    public function prepareCreation(array &$values)
+    {
+        $this->prepare($values);
+
+        $values['position'] = $this->getLastPosition($values['task_id']) + 1;
+        $values['status'] = isset($values['status']) ? $values['status'] : self::STATUS_TODO;
+        $values['time_estimated'] = isset($values['time_estimated']) ? $values['time_estimated'] : 0;
+        $values['time_spent'] = isset($values['time_spent']) ? $values['time_spent'] : 0;
+        $values['user_id'] = isset($values['user_id']) ? $values['user_id'] : 0;
     }
 
     /**
@@ -189,9 +216,7 @@ class Subtask extends Base
      */
     public function create(array $values)
     {
-        $this->prepare($values);
-        $values['position'] = $this->getLastPosition($values['task_id']) + 1;
-
+        $this->prepareCreation($values);
         $subtask_id = $this->persist(self::TABLE, $values);
 
         if ($subtask_id) {
@@ -208,23 +233,35 @@ class Subtask extends Base
      * Update
      *
      * @access public
-     * @param  array    $values    Form values
+     * @param  array $values      Form values
+     * @param  bool  $fire_events If true, will be called an event
      * @return bool
      */
-    public function update(array $values)
+    public function update(array $values, $fire_events = true)
     {
         $this->prepare($values);
+        $subtask = $this->getById($values['id']);
         $result = $this->db->table(self::TABLE)->eq('id', $values['id'])->save($values);
 
-        if ($result) {
-
-            $this->container['dispatcher']->dispatch(
-                self::EVENT_UPDATE,
-                new SubtaskEvent($values)
-            );
+        if ($result && $fire_events) {
+            $event = $subtask;
+            $event['changes'] = array_diff_assoc($values, $subtask);
+            $this->container['dispatcher']->dispatch(self::EVENT_UPDATE, new SubtaskEvent($event));
         }
 
         return $result;
+    }
+
+    /**
+     * Close all subtasks of a task
+     *
+     * @access public
+     * @param  integer  $task_id
+     * @return boolean
+     */
+    public function closeAll($task_id)
+    {
+        return $this->db->table(self::TABLE)->eq('task_id', $task_id)->update(array('status' => self::STATUS_DONE));
     }
 
     /**
@@ -257,7 +294,7 @@ class Subtask extends Base
      */
     public function savePositions(array $subtasks)
     {
-        return $this->db->transaction(function ($db) use ($subtasks) {
+        return $this->db->transaction(function (Database $db) use ($subtasks) {
 
             foreach ($subtasks as $subtask_id => $position) {
                 if (! $db->table(Subtask::TABLE)->eq('id', $subtask_id)->update(array('position' => $position))) {
@@ -281,7 +318,6 @@ class Subtask extends Base
         $positions = array_flip($subtasks);
 
         if (isset($subtasks[$subtask_id]) && $subtasks[$subtask_id] < count($subtasks)) {
-
             $position = ++$subtasks[$subtask_id];
             $subtasks[$positions[$position]]--;
 
@@ -305,7 +341,6 @@ class Subtask extends Base
         $positions = array_flip($subtasks);
 
         if (isset($subtasks[$subtask_id]) && $subtasks[$subtask_id] > 1) {
-
             $position = --$subtasks[$subtask_id];
             $subtasks[$positions[$position]]++;
 
@@ -317,8 +352,6 @@ class Subtask extends Base
 
     /**
      * Change the status of subtask
-     *
-     * Todo -> In progress -> Done -> Todo -> etc...
      *
      * @access public
      * @param  integer  $subtask_id
@@ -333,6 +366,10 @@ class Subtask extends Base
             'status' => ($subtask['status'] + 1) % 3,
             'task_id' => $subtask['task_id'],
         );
+
+        if (empty($subtask['user_id']) && $this->userSession->isLogged()) {
+            $values['user_id'] = $this->userSession->getId();
+        }
 
         return $this->update($values);
     }
@@ -365,7 +402,7 @@ class Subtask extends Base
                $this->db->table(self::TABLE)
                         ->eq('status', self::STATUS_INPROGRESS)
                         ->eq('user_id', $user_id)
-                        ->count() === 1;
+                        ->exists();
     }
 
     /**
@@ -377,7 +414,14 @@ class Subtask extends Base
      */
     public function remove($subtask_id)
     {
-        return $this->db->table(self::TABLE)->eq('id', $subtask_id)->remove();
+        $subtask = $this->getById($subtask_id);
+        $result = $this->db->table(self::TABLE)->eq('id', $subtask_id)->remove();
+
+        if ($result) {
+            $this->container['dispatcher']->dispatch(self::EVENT_DELETE, new SubtaskEvent($subtask));
+        }
+
+        return $result;
     }
 
     /**
@@ -390,7 +434,7 @@ class Subtask extends Base
      */
     public function duplicate($src_task_id, $dst_task_id)
     {
-        return $this->db->transaction(function ($db) use ($src_task_id, $dst_task_id) {
+        return $this->db->transaction(function (Database $db) use ($src_task_id, $dst_task_id) {
 
             $subtasks = $db->table(Subtask::TABLE)
                                  ->columns('title', 'time_estimated', 'position')
@@ -399,7 +443,6 @@ class Subtask extends Base
                                  ->findAll();
 
             foreach ($subtasks as &$subtask) {
-
                 $subtask['task_id'] = $dst_task_id;
 
                 if (! $db->table(Subtask::TABLE)->save($subtask)) {

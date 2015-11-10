@@ -1,6 +1,6 @@
 <?php
 
-namespace Controller;
+namespace Kanboard\Controller;
 
 /**
  * Comment controller
@@ -81,19 +81,17 @@ class Comment extends Base
         list($valid, $errors) = $this->comment->validateCreation($values);
 
         if ($valid) {
-
             if ($this->comment->create($values)) {
                 $this->session->flash(t('Comment added successfully.'));
-            }
-            else {
+            } else {
                 $this->session->flashError(t('Unable to create your comment.'));
             }
 
             if ($ajax) {
-                $this->response->redirect('?controller=board&action=show&project_id='.$task['project_id']);
+                $this->response->redirect($this->helper->url->to('board', 'show', array('project_id' => $task['project_id'])));
             }
 
-            $this->response->redirect('?controller=task&action=show&task_id='.$task['id'].'&project_id='.$task['project_id'].'#comments');
+            $this->response->redirect($this->helper->url->to('task', 'show', array('task_id' => $task['id'], 'project_id' => $task['project_id']), 'comments'));
         }
 
         $this->create($values, $errors);
@@ -132,15 +130,13 @@ class Comment extends Base
         list($valid, $errors) = $this->comment->validateModification($values);
 
         if ($valid) {
-
             if ($this->comment->update($values)) {
                 $this->session->flash(t('Comment updated successfully.'));
-            }
-            else {
+            } else {
                 $this->session->flashError(t('Unable to update your comment.'));
             }
 
-            $this->response->redirect('?controller=task&action=show&task_id='.$task['id'].'&project_id='.$task['project_id'].'#comment-'.$comment['id']);
+            $this->response->redirect($this->helper->url->to('task', 'show', array('task_id' => $task['id'], 'project_id' => $task['project_id']), 'comment-'.$comment['id']));
         }
 
         $this->edit($values, $errors);
@@ -176,11 +172,25 @@ class Comment extends Base
 
         if ($this->comment->remove($comment['id'])) {
             $this->session->flash(t('Comment removed successfully.'));
-        }
-        else {
+        } else {
             $this->session->flashError(t('Unable to remove this comment.'));
         }
 
-        $this->response->redirect('?controller=task&action=show&task_id='.$task['id'].'&project_id='.$task['project_id'].'#comments');
+        $this->response->redirect($this->helper->url->to('task', 'show', array('task_id' => $task['id'], 'project_id' => $task['project_id']), 'comments'));
+    }
+
+    /**
+     * Toggle comment sorting
+     *
+     * @access public
+     */
+    public function toggleSorting()
+    {
+        $task = $this->getTask();
+
+        $order = $this->userSession->getCommentSorting() === 'ASC' ? 'DESC' : 'ASC';
+        $this->userSession->setCommentSorting($order);
+
+        $this->response->redirect($this->helper->url->href('task', 'show', array('task_id' => $task['id'], 'project_id' => $task['project_id']), false, 'comments'));
     }
 }

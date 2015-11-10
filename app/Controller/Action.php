@@ -1,6 +1,6 @@
 <?php
 
-namespace Controller;
+namespace Kanboard\Controller;
 
 /**
  * Automatic actions management
@@ -31,6 +31,7 @@ class Action extends Base
             'projects_list' => $this->project->getList(false),
             'colors_list' => $this->color->getList(),
             'categories_list' => $this->category->getList($project['id']),
+            'links_list' => $this->link->getList(0, false),
             'title' => t('Automatic actions')
         )));
     }
@@ -46,7 +47,7 @@ class Action extends Base
         $values = $this->request->getValues();
 
         if (empty($values['action_name']) || empty($values['project_id'])) {
-            $this->response->redirect('?controller=action&action=index&project_id='.$project['id']);
+            $this->response->redirect($this->helper->url->to('action', 'index', array('project_id' => $project['id'])));
         }
 
         $this->response->html($this->projectLayout('action/event', array(
@@ -68,7 +69,7 @@ class Action extends Base
         $values = $this->request->getValues();
 
         if (empty($values['action_name']) || empty($values['project_id']) || empty($values['event_name'])) {
-            $this->response->redirect('?controller=action&action=index&project_id='.$project['id']);
+            $this->response->redirect($this->helper->url->to('action', 'index', array('project_id' => $project['id'])));
         }
 
         $action = $this->action->load($values['action_name'], $values['project_id'], $values['event_name']);
@@ -89,6 +90,7 @@ class Action extends Base
             'projects_list' => $projects_list,
             'colors_list' => $this->color->getList(),
             'categories_list' => $this->category->getList($project['id']),
+            'links_list' => $this->link->getList(0, false),
             'project' => $project,
             'title' => t('Automatic actions')
         )));
@@ -113,19 +115,17 @@ class Action extends Base
      */
     private function doCreation(array $project, array $values)
     {
-        list($valid,) = $this->action->validateCreation($values);
+        list($valid, ) = $this->action->validateCreation($values);
 
         if ($valid) {
-
-            if ($this->action->create($values)) {
+            if ($this->action->create($values) !== false) {
                 $this->session->flash(t('Your automatic action have been created successfully.'));
-            }
-            else {
+            } else {
                 $this->session->flashError(t('Unable to create your automatic action.'));
             }
         }
 
-        $this->response->redirect('?controller=action&action=index&project_id='.$project['id']);
+        $this->response->redirect($this->helper->url->to('action', 'index', array('project_id' => $project['id'])));
     }
 
     /**
@@ -163,6 +163,6 @@ class Action extends Base
             $this->session->flashError(t('Unable to remove this action.'));
         }
 
-        $this->response->redirect('?controller=action&action=index&project_id='.$project['id']);
+        $this->response->redirect($this->helper->url->to('action', 'index', array('project_id' => $project['id'])));
     }
 }

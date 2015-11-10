@@ -10,21 +10,19 @@ class Api extends PHPUnit_Framework_TestCase
     {
         if (DB_DRIVER === 'sqlite') {
             @unlink(DB_FILENAME);
-        }
-        else if (DB_DRIVER === 'mysql') {
+        } elseif (DB_DRIVER === 'mysql') {
             $pdo = new PDO('mysql:host='.DB_HOSTNAME, DB_USERNAME, DB_PASSWORD);
             $pdo->exec('DROP DATABASE '.DB_NAME);
             $pdo->exec('CREATE DATABASE '.DB_NAME);
             $pdo = null;
-        }
-        else if (DB_DRIVER === 'postgres') {
+        } elseif (DB_DRIVER === 'postgres') {
             $pdo = new PDO('pgsql:host='.DB_HOSTNAME, DB_USERNAME, DB_PASSWORD);
             $pdo->exec('DROP DATABASE '.DB_NAME);
             $pdo->exec('CREATE DATABASE '.DB_NAME.' WITH OWNER '.DB_USERNAME);
             $pdo = null;
         }
 
-        $service = new ServiceProvider\DatabaseProvider;
+        $service = new Kanboard\ServiceProvider\DatabaseProvider;
 
         $db = $service->getInstance();
         $db->table('settings')->eq('option', 'api_token')->update(array('value' => API_KEY));
@@ -43,7 +41,6 @@ class Api extends PHPUnit_Framework_TestCase
     {
         $tasks = $this->client->getAllTasks(1, 1);
         $this->assertNotEmpty($tasks);
-        $this->assertEquals(1, count($tasks));
 
         return $tasks[0]['id'];
     }
@@ -64,6 +61,9 @@ class Api extends PHPUnit_Framework_TestCase
 
         if ($projects) {
             foreach ($projects as $project) {
+                $this->assertEquals('http://127.0.0.1:8000/?controller=board&action=show&project_id='.$project['id'], $project['url']['board']);
+                $this->assertEquals('http://127.0.0.1:8000/?controller=calendar&action=show&project_id='.$project['id'], $project['url']['calendar']);
+                $this->assertEquals('http://127.0.0.1:8000/?controller=listing&action=show&project_id='.$project['id'], $project['url']['list']);
                 $this->assertTrue($this->client->removeProject($project['id']));
             }
         }
@@ -81,6 +81,9 @@ class Api extends PHPUnit_Framework_TestCase
         $project = $this->client->getProjectById(1);
         $this->assertNotEmpty($project);
         $this->assertEquals(1, $project['id']);
+        $this->assertEquals('http://127.0.0.1:8000/?controller=board&action=show&project_id='.$project['id'], $project['url']['board']);
+        $this->assertEquals('http://127.0.0.1:8000/?controller=calendar&action=show&project_id='.$project['id'], $project['url']['calendar']);
+        $this->assertEquals('http://127.0.0.1:8000/?controller=listing&action=show&project_id='.$project['id'], $project['url']['list']);
     }
 
     public function testGetProjectByName()
@@ -88,6 +91,9 @@ class Api extends PHPUnit_Framework_TestCase
         $project = $this->client->getProjectByName('API test');
         $this->assertNotEmpty($project);
         $this->assertEquals(1, $project['id']);
+        $this->assertEquals('http://127.0.0.1:8000/?controller=board&action=show&project_id='.$project['id'], $project['url']['board']);
+        $this->assertEquals('http://127.0.0.1:8000/?controller=calendar&action=show&project_id='.$project['id'], $project['url']['calendar']);
+        $this->assertEquals('http://127.0.0.1:8000/?controller=listing&action=show&project_id='.$project['id'], $project['url']['list']);
 
         $project = $this->client->getProjectByName(array('name' => 'API test'));
         $this->assertNotEmpty($project);
@@ -96,6 +102,18 @@ class Api extends PHPUnit_Framework_TestCase
         $project = $this->client->getProjectByName('None');
         $this->assertEmpty($project);
         $this->assertNull($project);
+    }
+
+    public function testGetAllProjects()
+    {
+        $projects = $this->client->getAllProjects();
+        $this->assertNotEmpty($projects);
+
+        foreach ($projects as $project) {
+            $this->assertEquals('http://127.0.0.1:8000/?controller=board&action=show&project_id='.$project['id'], $project['url']['board']);
+            $this->assertEquals('http://127.0.0.1:8000/?controller=calendar&action=show&project_id='.$project['id'], $project['url']['calendar']);
+            $this->assertEquals('http://127.0.0.1:8000/?controller=listing&action=show&project_id='.$project['id'], $project['url']['list']);
+        }
     }
 
     public function testUpdateProject()
@@ -348,11 +366,6 @@ class Api extends PHPUnit_Framework_TestCase
         $this->assertEquals('Swimlane A', $swimlanes[2]['name']);
     }
 
-    public function testRemoveSwimlane()
-    {
-        $this->assertTrue($this->client->removeSwimlane(1, 2));
-    }
-
     public function testCreateTask()
     {
         $task = array(
@@ -391,6 +404,7 @@ class Api extends PHPUnit_Framework_TestCase
         $this->assertNotFalse($task);
         $this->assertTrue(is_array($task));
         $this->assertEquals('Task #1', $task['title']);
+        $this->assertEquals('http://127.0.0.1:8000/?controller=task&action=show&task_id='.$task['id'].'&project_id='.$task['project_id'], $task['url']);
     }
 
     public function testGetAllTasks()
@@ -400,12 +414,49 @@ class Api extends PHPUnit_Framework_TestCase
         $this->assertNotFalse($tasks);
         $this->assertTrue(is_array($tasks));
         $this->assertEquals('Task #1', $tasks[0]['title']);
+        $this->assertEquals('http://127.0.0.1:8000/?controller=task&action=show&task_id='.$tasks[0]['id'].'&project_id='.$tasks[0]['project_id'], $tasks[0]['url']);
 
         $tasks = $this->client->getAllTasks(2, 0);
 
         $this->assertNotFalse($tasks);
         $this->assertTrue(is_array($tasks));
         $this->assertEmpty($tasks);
+    }
+
+    public function testMoveTaskSwimlane()
+    {
+        $task_id = $this->getTaskId();
+
+        $task = $this->client->getTask($task_id);
+        $this->assertNotFalse($task);
+        $this->assertTrue(is_array($task));
+        $this->assertEquals(1, $task['position']);
+        $this->assertEquals(2, $task['column_id']);
+        $this->assertEquals(0, $task['swimlane_id']);
+
+        $moved_timestamp = $task['date_moved'];
+        sleep(1);
+        $this->assertTrue($this->client->moveTaskPosition(1, $task_id, 4, 1, 2));
+
+        $task = $this->client->getTask($task_id);
+        $this->assertNotFalse($task);
+        $this->assertTrue(is_array($task));
+        $this->assertEquals(1, $task['position']);
+        $this->assertEquals(4, $task['column_id']);
+        $this->assertEquals(2, $task['swimlane_id']);
+        $this->assertNotEquals($moved_timestamp, $task['date_moved']);
+    }
+
+    public function testRemoveSwimlane()
+    {
+        $this->assertTrue($this->client->removeSwimlane(1, 2));
+
+        $task = $this->client->getTask($this->getTaskId());
+        $this->assertNotFalse($task);
+        $this->assertTrue(is_array($task));
+        $this->assertEquals(1, $task['position']);
+        $this->assertEquals(4, $task['column_id']);
+        $this->assertEquals(0, $task['swimlane_id']);
     }
 
     public function testUpdateTask()
@@ -415,7 +466,6 @@ class Api extends PHPUnit_Framework_TestCase
         $values = array();
         $values['id'] = $task['id'];
         $values['color_id'] = 'green';
-        $values['column_id'] = 1;
         $values['description'] = 'test';
         $values['date_due'] = '';
 
@@ -937,12 +987,12 @@ class Api extends PHPUnit_Framework_TestCase
 
     public function testCreateFile()
     {
-        $this->assertTrue($this->client->createFile(1, 1, 'My file', false, base64_encode('plain text file')));
+        $this->assertNotFalse($this->client->createFile(1, $this->getTaskId(), 'My file', base64_encode('plain text file')));
     }
 
     public function testGetAllFiles()
     {
-        $files = $this->client->getAllFiles(array('task_id' => 1));
+        $files = $this->client->getAllFiles(array('task_id' => $this->getTaskId()));
 
         $this->assertNotEmpty($files);
         $this->assertCount(1, $files);
@@ -961,5 +1011,73 @@ class Api extends PHPUnit_Framework_TestCase
 
         $this->assertTrue($this->client->removeFile($file['id']));
         $this->assertEmpty($this->client->getAllFiles(1));
+    }
+
+    public function testRemoveAllFiles()
+    {
+        $this->assertNotFalse($this->client->createFile(1, $this->getTaskId(), 'My file 1', base64_encode('plain text file')));
+        $this->assertNotFalse($this->client->createFile(1, $this->getTaskId(), 'My file 2', base64_encode('plain text file')));
+
+        $files = $this->client->getAllFiles(array('task_id' => $this->getTaskId()));
+        $this->assertNotEmpty($files);
+        $this->assertCount(2, $files);
+
+        $this->assertTrue($this->client->removeAllFiles(array('task_id' => $this->getTaskId())));
+
+        $files = $this->client->getAllFiles(array('task_id' => $this->getTaskId()));
+        $this->assertEmpty($files);
+    }
+
+    public function testCreateTaskWithReference()
+    {
+        $task = array(
+            'title' => 'Task with external ticket number',
+            'reference' => 'TICKET-1234',
+            'project_id' => 1,
+            'description' => '[Link to my ticket](http://my-ticketing-system/1234)',
+        );
+
+        $task_id = $this->client->createTask($task);
+
+        $this->assertNotFalse($task_id);
+        $this->assertInternalType('int', $task_id);
+        $this->assertTrue($task_id > 0);
+    }
+
+    public function testGetTaskByReference()
+    {
+        $task = $this->client->getTaskByReference(array('project_id' => 1, 'reference' => 'TICKET-1234'));
+
+        $this->assertNotEmpty($task);
+        $this->assertEquals('Task with external ticket number', $task['title']);
+        $this->assertEquals('TICKET-1234', $task['reference']);
+        $this->assertEquals('http://127.0.0.1:8000/?controller=task&action=show&task_id='.$task['id'].'&project_id='.$task['project_id'], $task['url']);
+    }
+
+    public function testCreateOverdueTask()
+    {
+        $this->assertNotFalse($this->client->createTask(array(
+            'title' => 'overdue task',
+            'project_id' => 1,
+            'date_due' => date('Y-m-d', strtotime('-2days')),
+        )));
+    }
+
+    public function testGetOverdueTasksByProject()
+    {
+        $tasks = $this->client->getOverdueTasksByProject(1);
+        $this->assertNotEmpty($tasks);
+        $this->assertCount(1, $tasks);
+        $this->assertEquals('overdue task', $tasks[0]['title']);
+        $this->assertEquals('API test', $tasks[0]['project_name']);
+    }
+
+    public function testGetOverdueTasks()
+    {
+        $tasks = $this->client->getOverdueTasks();
+        $this->assertNotEmpty($tasks);
+        $this->assertCount(1, $tasks);
+        $this->assertEquals('overdue task', $tasks[0]['title']);
+        $this->assertEquals('API test', $tasks[0]['project_name']);
     }
 }

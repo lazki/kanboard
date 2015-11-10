@@ -1,9 +1,9 @@
 <?php
 
-namespace Helper;
+namespace Kanboard\Helper;
 
-use Core\Request;
-use Core\Security;
+use Kanboard\Core\Http\Request;
+use Kanboard\Core\Base;
 
 /**
  * Url helpers
@@ -11,8 +11,24 @@ use Core\Security;
  * @package helper
  * @author  Frederic Guillot
  */
-class Url extends \Core\Base
+class Url extends Base
 {
+    private $base = '';
+    private $directory = '';
+
+    /**
+     * Helper to generate a link to the documentation
+     *
+     * @access public
+     * @param  string  $label
+     * @param  string  $file
+     * @return string
+     */
+    public function doc($label, $file)
+    {
+        return $this->link($label, 'doc', 'show', array('file' => $file), false, '', '', true);
+    }
+
     /**
      * HTML Link tag
      *
@@ -33,7 +49,7 @@ class Url extends \Core\Base
     }
 
     /**
-     * Hyperlink
+     * HTML Hyperlink
      *
      * @access public
      * @param  string   $controller  Controller name
@@ -41,22 +57,12 @@ class Url extends \Core\Base
      * @param  array    $params      Url parameters
      * @param  boolean  $csrf        Add a CSRF token
      * @param  string   $anchor      Link Anchor
+     * @param  boolean  $absolute    Absolute or relative link
      * @return string
      */
-    public function href($controller, $action, array $params = array(), $csrf = false, $anchor = '')
+    public function href($controller, $action, array $params = array(), $csrf = false, $anchor = '', $absolute = false)
     {
-        $values = array(
-            'controller' => $controller,
-            'action' => $action,
-        );
-
-        if ($csrf) {
-            $params['csrf_token'] = Security::getCSRFToken();
-        }
-
-        $values += $params;
-
-        return '?'.http_build_query($values, '', '&amp;').(empty($anchor) ? '' : '#'.$anchor);
+        return $this->build('&amp;', $controller, $action, $params, $csrf, $anchor, $absolute);
     }
 
     /**
@@ -66,18 +72,13 @@ class Url extends \Core\Base
      * @param  string   $controller  Controller name
      * @param  string   $action      Action name
      * @param  array    $params      Url parameters
+     * @param  string   $anchor      Link Anchor
+     * @param  boolean  $absolute    Absolute or relative link
      * @return string
      */
-    public function to($controller, $action, array $params = array())
+    public function to($controller, $action, array $params = array(), $anchor = '', $absolute = false)
     {
-        $values = array(
-            'controller' => $controller,
-            'action' => $action,
-        );
-
-        $values += $params;
-
-        return '?'.http_build_query($values, '', '&');
+        return $this->build('&', $controller, $action, $params, false, $anchor, $absolute);
     }
 
     /**
@@ -88,13 +89,28 @@ class Url extends \Core\Base
      */
     public function base()
     {
-        $application_url = $this->config->get('application_url');
-
-        if (! empty($application_url)) {
-            return $application_url;
+        if (empty($this->base)) {
+            $this->base = $this->config->get('application_url') ?: $this->server();
         }
 
-        return $this->server();
+        return $this->base;
+    }
+
+    /**
+     * Get application base directory
+     *
+     * @access public
+     * @return string
+     */
+    public function dir()
+    {
+        if (empty($this->directory) && isset($_SERVER['REQUEST_METHOD'])) {
+            $this->directory = str_replace('\\', '/', dirname($_SERVER['PHP_SELF']));
+            $this->directory = $this->directory !== '/' ? $this->directory.'/' : '/';
+            $this->directory = str_replace('//', '/', $this->directory);
+        }
+
+        return $this->directory;
     }
 
     /**
@@ -105,13 +121,50 @@ class Url extends \Core\Base
      */
     public function server()
     {
-        $self = str_replace('\\', '/', dirname($_SERVER['PHP_SELF']));
+        if (empty($_SERVER['SERVER_NAME'])) {
+            return 'http://localhost/';
+        }
 
         $url = Request::isHTTPS() ? 'https://' : 'http://';
         $url .= $_SERVER['SERVER_NAME'];
         $url .= $_SERVER['SERVER_PORT'] == 80 || $_SERVER['SERVER_PORT'] == 443 ? '' : ':'.$_SERVER['SERVER_PORT'];
-        $url .= $self !== '/' ? $self.'/' : '/';
+        $url .= $this->dir() ?: '/';
 
         return $url;
+    }
+
+    /**
+     * Build relative url
+     *
+     * @access private
+     * @param  string   $separator   Querystring argument separator
+     * @param  string   $controller  Controller name
+     * @param  string   $action      Action name
+     * @param  array    $params      Url parameters
+     * @param  boolean  $csrf        Add a CSRF token
+     * @param  string   $anchor      Link Anchor
+     * @param  boolean  $absolute    Absolute or relative link
+     * @return string
+     */
+    private function build($separator, $controller, $action, array $params = array(), $csrf = false, $anchor = '', $absolute = false)
+    {
+        $path = $this->router->findUrl($controller, $action, $params);
+        $qs = array();
+
+        if (empty($path)) {
+            $qs['controller'] = $controller;
+            $qs['action'] = $action;
+            $qs += $params;
+        }
+
+        if ($csrf) {
+            $qs['csrf_token'] = $this->token->getCSRFToken();
+        }
+
+        if (! empty($qs)) {
+            $path .= '?'.http_build_query($qs, '', $separator);
+        }
+
+        return ($absolute ? $this->base() : $this->dir()).$path.(empty($anchor) ? '' : '#'.$anchor);
     }
 }

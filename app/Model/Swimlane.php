@@ -1,6 +1,6 @@
 <?php
 
-namespace Model;
+namespace Kanboard\Model;
 
 use SimpleValidator\Validator;
 use SimpleValidator\Validators;
@@ -142,8 +142,7 @@ class Swimlane extends Base
 
         if ($status == self::ACTIVE) {
             $query->asc('position');
-        }
-        else {
+        } else {
             $query->asc('name');
         }
 
@@ -160,7 +159,7 @@ class Swimlane extends Base
     public function getSwimlanes($project_id)
     {
         $swimlanes = $this->db->table(self::TABLE)
-                              ->columns('id', 'name')
+                              ->columns('id', 'name', 'description')
                               ->eq('project_id', $project_id)
                               ->eq('is_active', self::ACTIVE)
                               ->orderBy('position', 'asc')
@@ -172,7 +171,6 @@ class Swimlane extends Base
                                      ->findOneColumn('default_swimlane');
 
         if ($default_swimlane) {
-
             if ($default_swimlane === 'Default swimlane') {
                 $default_swimlane = t($default_swimlane);
             }
@@ -216,32 +214,30 @@ class Swimlane extends Base
      * Add a new swimlane
      *
      * @access public
-     * @param  integer   $project_id
-     * @param  string    $name
+     * @param  array    $values   Form values
      * @return integer|boolean
      */
-    public function create($project_id, $name)
+    public function create($values)
     {
-        return $this->persist(self::TABLE, array(
-            'project_id' => $project_id,
-            'name' => $name,
-            'position' => $this->getLastPosition($project_id),
-        ));
+        if (! $this->project->exists($values['project_id'])) {
+            return 0;
+        }
+        $values['position'] = $this->getLastPosition($values['project_id']);
+        return $this->persist(self::TABLE, $values);
     }
 
     /**
-     * Rename a swimlane
+     * Update a swimlane
      *
      * @access public
-     * @param  integer   $swimlane_id    Swimlane id
-     * @param  string    $name           Swimlane name
+     * @param  array    $values    Form values
      * @return bool
      */
-    public function rename($swimlane_id, $name)
+    public function update(array $values)
     {
         return $this->db->table(self::TABLE)
-                        ->eq('id', $swimlane_id)
-                        ->update(array('name' => $name));
+                        ->eq('id', $values['id'])
+                        ->update($values);
     }
 
     /**
@@ -398,7 +394,6 @@ class Swimlane extends Base
         $positions = array_flip($swimlanes);
 
         if (isset($swimlanes[$swimlane_id]) && $swimlanes[$swimlane_id] < count($swimlanes)) {
-
             $position = ++$swimlanes[$swimlane_id];
             $swimlanes[$positions[$position]]--;
 
@@ -432,7 +427,6 @@ class Swimlane extends Base
         $positions = array_flip($swimlanes);
 
         if (isset($swimlanes[$swimlane_id]) && $swimlanes[$swimlane_id] > 1) {
-
             $position = --$swimlanes[$swimlane_id];
             $swimlanes[$positions[$position]]++;
 
@@ -461,7 +455,6 @@ class Swimlane extends Base
         $swimlanes = $this->getAll($project_from);
 
         foreach ($swimlanes as $swimlane) {
-
             unset($swimlane['id']);
             $swimlane['project_id'] = $project_to;
 

@@ -1,6 +1,6 @@
 <?php
 
-namespace Controller;
+namespace Kanboard\Controller;
 
 /**
  * Export controller
@@ -70,7 +70,7 @@ class Export extends Base
      */
     public function summary()
     {
-        $this->common('projectDailySummary', 'getAggregatedMetrics', t('Summary'), 'summary', t('Daily project summary export'));
+        $this->common('ProjectDailyColumnStats', 'getAggregatedMetrics', t('Summary'), 'summary', t('Daily project summary export'));
     }
 
     /**

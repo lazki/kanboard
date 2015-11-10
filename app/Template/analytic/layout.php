@@ -1,6 +1,3 @@
-<?= $this->asset->js('assets/js/vendor/d3.v3.4.8.min.js') ?>
-<?= $this->asset->js('assets/js/vendor/dimple.v2.1.2.min.js') ?>
-
 <section id="main">
     <div class="page-header">
         <ul>
@@ -15,9 +12,19 @@
             </span>
             </li>
             <li>
-                <i class="fa fa-table fa-fw"></i>
+                <i class="fa fa-th fa-fw"></i>
                 <?= $this->url->link(t('Back to the board'), 'board', 'show', array('project_id' => $project['id'])) ?>
             </li>
+            <li>
+                <i class="fa fa-calendar fa-fw"></i>
+                <?= $this->url->link(t('Back to the calendar'), 'calendar', 'show', array('project_id' => $project['id'])) ?>
+            </li>
+            <?php if ($this->user->isProjectManagementAllowed($project['id'])): ?>
+            <li>
+                <i class="fa fa-cog fa-fw"></i>
+                <?= $this->url->link(t('Project settings'), 'project', 'show', array('project_id' => $project['id'])) ?>
+            </li>
+            <?php endif ?>
             <li>
                 <i class="fa fa-folder fa-fw"></i>
                 <?= $this->url->link(t('All projects'), 'project', 'index') ?>
@@ -33,3 +40,6 @@
         </div>
     </section>
 </section>
+
+<?= $this->asset->js('assets/js/vendor/d3.v3.min.js') ?>
+<?= $this->asset->js('assets/js/vendor/c3.min.js') ?>

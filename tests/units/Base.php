@@ -9,24 +9,6 @@ use Symfony\Component\Stopwatch\Stopwatch;
 use SimpleLogger\Logger;
 use SimpleLogger\File;
 
-date_default_timezone_set('UTC');
-
-class FakeEmailClient
-{
-    public $email;
-    public $name;
-    public $subject;
-    public $html;
-
-    public function send($email, $name, $subject, $html)
-    {
-        $this->email = $email;
-        $this->name = $name;
-        $this->subject = $subject;
-        $this->html = $html;
-    }
-}
-
 class FakeHttpClient
 {
     private $url = '';
@@ -76,13 +58,14 @@ abstract class Base extends PHPUnit_Framework_TestCase
 
     public function setUp()
     {
+        date_default_timezone_set('UTC');
+
         if (DB_DRIVER === 'mysql') {
             $pdo = new PDO('mysql:host='.DB_HOSTNAME, DB_USERNAME, DB_PASSWORD);
             $pdo->exec('DROP DATABASE '.DB_NAME);
             $pdo->exec('CREATE DATABASE '.DB_NAME);
             $pdo = null;
-        }
-        else if (DB_DRIVER === 'postgres') {
+        } elseif (DB_DRIVER === 'postgres') {
             $pdo = new PDO('pgsql:host='.DB_HOSTNAME, DB_USERNAME, DB_PASSWORD);
             $pdo->exec('DROP DATABASE '.DB_NAME);
             $pdo->exec('CREATE DATABASE '.DB_NAME.' WITH OWNER '.DB_USERNAME);
@@ -90,24 +73,35 @@ abstract class Base extends PHPUnit_Framework_TestCase
         }
 
         $this->container = new Pimple\Container;
-        $this->container->register(new ServiceProvider\DatabaseProvider);
-        $this->container->register(new ServiceProvider\ClassProvider);
+        $this->container->register(new Kanboard\ServiceProvider\DatabaseProvider);
+        $this->container->register(new Kanboard\ServiceProvider\ClassProvider);
 
         $this->container['dispatcher'] = new TraceableEventDispatcher(
             new EventDispatcher,
             new Stopwatch
         );
 
-        $this->container['db']->log_queries = true;
+        $this->container['db']->logQueries = true;
 
         $this->container['logger'] = new Logger;
-        $this->container['logger']->setLogger(new File('/dev/null'));
+        $this->container['logger']->setLogger(new File($this->isWindows() ? 'NUL' : '/dev/null'));
         $this->container['httpClient'] = new FakeHttpClient;
-        $this->container['emailClient'] = new FakeEmailClient;
+        $this->container['emailClient'] = $this->getMockBuilder('EmailClient')->setMethods(array('send'))->getMock();
+
+        $this->container['userNotificationType'] = $this
+            ->getMockBuilder('\Kanboard\Model\UserNotificationType')
+            ->setConstructorArgs(array($this->container))
+            ->setMethods(array('getType', 'getSelectedTypes'))
+            ->getMock();
     }
 
     public function tearDown()
     {
         $this->container['db']->closeConnection();
+    }
+
+    public function isWindows()
+    {
+        return substr(PHP_OS, 0, 3) === 'WIN';
     }
 }

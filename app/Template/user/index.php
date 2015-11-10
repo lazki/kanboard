@@ -2,11 +2,12 @@
     <div class="page-header">
         <?php if ($this->user->isAdmin()): ?>
         <ul>
-            <li><i class="fa fa-plus fa-fw"></i><?= $this->url->link(t('New user'), 'user', 'create') ?></li>
+            <li><i class="fa fa-plus fa-fw"></i><?= $this->url->link(t('New local user'), 'user', 'create') ?></li>
+            <li><i class="fa fa-plus fa-fw"></i><?= $this->url->link(t('New remote user'), 'user', 'create', array('remote' => 1)) ?></li>
+            <li><i class="fa fa-upload fa-fw"></i><?= $this->url->link(t('Import'), 'userImport', 'step1') ?></li>
         </ul>
         <?php endif ?>
     </div>
-    <section>
     <?php if ($paginator->isEmpty()): ?>
         <p class="alert"><?= t('No user') ?></p>
     <?php else: ?>
@@ -17,10 +18,9 @@
                 <th><?= $paginator->order(t('Name'), 'name') ?></th>
                 <th><?= $paginator->order(t('Email'), 'email') ?></th>
                 <th><?= $paginator->order(t('Administrator'), 'is_admin') ?></th>
+                <th><?= $paginator->order(t('Project Administrator'), 'is_project_admin') ?></th>
                 <th><?= $paginator->order(t('Two factor authentication'), 'twofactor_activated') ?></th>
-                <th><?= $paginator->order(t('Default project'), 'default_project_id') ?></th>
                 <th><?= $paginator->order(t('Notifications'), 'notifications_enabled') ?></th>
-                <th><?= t('External accounts') ?></th>
                 <th><?= $paginator->order(t('Account type'), 'is_ldap_user') ?></th>
             </tr>
             <?php foreach ($paginator->getCollection() as $user): ?>
@@ -41,10 +41,10 @@
                     <?= $user['is_admin'] ? t('Yes') : t('No') ?>
                 </td>
                 <td>
-                    <?= $user['twofactor_activated'] ? t('Yes') : t('No') ?>
+                    <?= $user['is_project_admin'] ? t('Yes') : t('No') ?>
                 </td>
                 <td>
-                    <?= (isset($user['default_project_id']) && isset($projects[$user['default_project_id']])) ? $this->e($projects[$user['default_project_id']]) : t('None'); ?>
+                    <?= $user['twofactor_activated'] ? t('Yes') : t('No') ?>
                 </td>
                 <td>
                     <?php if ($user['notifications_enabled'] == 1): ?>
@@ -52,16 +52,6 @@
                     <?php else: ?>
                         <?= t('Disabled') ?>
                     <?php endif ?>
-                </td>
-                <td>
-                    <ul class="no-bullet">
-                    <?php if ($user['google_id']): ?>
-                        <li><i class="fa fa-google fa-fw"></i><?= t('Google account linked') ?></li>
-                    <?php endif ?>
-                    <?php if ($user['github_id']): ?>
-                        <li><i class="fa fa-github fa-fw"></i><?= t('Github account linked') ?></li>
-                    <?php endif ?>
-                    </ul>
                 </td>
                 <td>
                     <?= $user['is_ldap_user'] ? t('Remote') : t('Local') ?>
@@ -72,5 +62,4 @@
 
         <?= $paginator ?>
     <?php endif ?>
-    </section>
 </section>

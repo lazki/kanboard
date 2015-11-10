@@ -1,8 +1,8 @@
 <?php
 
-namespace Model;
+namespace Kanboard\Model;
 
-use Event\TaskEvent;
+use Kanboard\Event\TaskEvent;
 
 /**
  * Task Modification
@@ -42,18 +42,36 @@ class TaskModification extends Base
      */
     public function fireEvents(array $task, array $new_values)
     {
+        $events = array();
         $event_data = array_merge($task, $new_values, array('task_id' => $task['id']));
 
-        if (isset($new_values['owner_id']) && $task['owner_id'] != $new_values['owner_id']) {
-            $events = array(Task::EVENT_ASSIGNEE_CHANGE);
-        }
-        else {
-            $events = array(Task::EVENT_CREATE_UPDATE, Task::EVENT_UPDATE);
+        // Values changed
+        $event_data['changes'] = array_diff_assoc($new_values, $task);
+        unset($event_data['changes']['date_modification']);
+
+        if ($this->isFieldModified('owner_id', $event_data['changes'])) {
+            $events[] = Task::EVENT_ASSIGNEE_CHANGE;
+        } else {
+            $events[] = Task::EVENT_CREATE_UPDATE;
+            $events[] = Task::EVENT_UPDATE;
         }
 
         foreach ($events as $event) {
             $this->container['dispatcher']->dispatch($event, new TaskEvent($event_data));
         }
+    }
+
+    /**
+     * Return true if the field is the only modified value
+     *
+     * @access public
+     * @param  string  $field
+     * @param  array   $changes
+     * @return boolean
+     */
+    public function isFieldModified($field, array $changes)
+    {
+        return isset($changes[$field]) && count($changes) === 1;
     }
 
     /**
@@ -64,7 +82,8 @@ class TaskModification extends Base
      */
     public function prepare(array &$values)
     {
-        $this->dateParser->convert($values, array('date_due', 'date_started'));
+        $this->dateParser->convert($values, array('date_due'));
+        $this->dateParser->convert($values, array('date_started'), true);
         $this->removeFields($values, array('another_task', 'id'));
         $this->resetFields($values, array('date_due', 'date_started', 'score', 'category_id', 'time_estimated', 'time_spent'));
         $this->convertIntegerFields($values, array('is_active', 'recurrence_status', 'recurrence_trigger', 'recurrence_factor', 'recurrence_timeframe', 'recurrence_basedate'));

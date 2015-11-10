@@ -1,6 +1,6 @@
 <?php
 
-namespace Controller;
+namespace Kanboard\Controller;
 
 /**
  * Config controller
@@ -37,30 +37,28 @@ class Config extends Base
     private function common($redirect)
     {
         if ($this->request->isPost()) {
-
             $values =  $this->request->getValues();
 
             switch ($redirect) {
                 case 'project':
-                    $values += array('subtask_restriction' => 0, 'subtask_time_tracking' => 0);
+                    $values += array('subtask_restriction' => 0, 'subtask_time_tracking' => 0, 'cfd_include_closed_tasks' => 0);
                     break;
                 case 'integrations':
-                    $values += array('integration_slack_webhook' => 0, 'integration_hipchat' => 0, 'integration_gravatar' => 0, 'integration_jabber' => 0);
+                    $values += array('integration_gravatar' => 0);
                     break;
                 case 'calendar':
-                    $values += array('calendar_user_subtasks_forecast' => 0, 'calendar_user_subtasks_time_tracking' => 0);
+                    $values += array('calendar_user_subtasks_time_tracking' => 0);
                     break;
             }
 
             if ($this->config->save($values)) {
                 $this->config->reload();
                 $this->session->flash(t('Settings saved successfully.'));
-            }
-            else {
+            } else {
                 $this->session->flashError(t('Unable to save your settings.'));
             }
 
-            $this->response->redirect('?controller=config&action='.$redirect);
+            $this->response->redirect($this->helper->url->to('config', $redirect));
         }
     }
 
@@ -74,6 +72,19 @@ class Config extends Base
         $this->response->html($this->layout('config/about', array(
             'db_size' => $this->config->getDatabaseSize(),
             'title' => t('Settings').' &gt; '.t('About'),
+        )));
+    }
+
+    /**
+     * Display the plugin page
+     *
+     * @access public
+     */
+    public function plugins()
+    {
+        $this->response->html($this->layout('config/plugins', array(
+            'plugins' => $this->pluginLoader->plugins,
+            'title' => t('Settings').' &gt; '.t('Plugins'),
         )));
     }
 
@@ -104,6 +115,7 @@ class Config extends Base
         $this->common('project');
 
         $this->response->html($this->layout('config/project', array(
+            'colors' => $this->color->getList(),
             'default_columns' => implode(', ', $this->board->getDefaultColumns()),
             'title' => t('Settings').' &gt; '.t('Project settings'),
         )));
@@ -199,7 +211,7 @@ class Config extends Base
         $this->checkCSRFParam();
         $this->config->optimizeDatabase();
         $this->session->flash(t('Database optimization done.'));
-        $this->response->redirect('?controller=config');
+        $this->response->redirect($this->helper->url->to('config', 'index'));
     }
 
     /**
@@ -215,6 +227,6 @@ class Config extends Base
         $this->config->regenerateToken($type.'_token');
 
         $this->session->flash(t('Token regenerated.'));
-        $this->response->redirect('?controller=config&action='.$type);
+        $this->response->redirect($this->helper->url->to('config', $type));
     }
 }

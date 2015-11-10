@@ -1,6 +1,6 @@
 <?php
 
-namespace Api;
+namespace Kanboard\Api;
 
 /**
  * App API controller
@@ -8,7 +8,7 @@ namespace Api;
  * @package  api
  * @author   Frederic Guillot
  */
-class App extends Base
+class App extends \Kanboard\Core\Base
 {
     public function getTimezone()
     {
@@ -18,5 +18,20 @@ class App extends Base
     public function getVersion()
     {
         return APP_VERSION;
+    }
+
+    public function getDefaultTaskColor()
+    {
+        return $this->color->getDefaultColor();
+    }
+
+    public function getDefaultTaskColors()
+    {
+        return $this->color->getDefaultColors();
+    }
+
+    public function getColorList()
+    {
+        return $this->color->getList();
     }
 }

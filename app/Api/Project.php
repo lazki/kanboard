@@ -1,6 +1,6 @@
 <?php
 
-namespace Api;
+namespace Kanboard\Api;
 
 /**
  * Project API controller
@@ -12,17 +12,18 @@ class Project extends Base
 {
     public function getProjectById($project_id)
     {
-        return $this->project->getById($project_id);
+        $this->checkProjectPermission($project_id);
+        return $this->formatProject($this->project->getById($project_id));
     }
 
     public function getProjectByName($name)
     {
-        return $this->project->getByName($name);
+        return $this->formatProject($this->project->getByName($name));
     }
 
     public function getAllProjects()
     {
-        return $this->project->getAll();
+        return $this->formatProjects($this->project->getAll());
     }
 
     public function removeProject($project_id)
@@ -57,6 +58,7 @@ class Project extends Base
 
     public function getProjectActivity($project_id)
     {
+        $this->checkProjectPermission($project_id);
         return $this->projectActivity->getProject($project_id);
     }
 
@@ -67,7 +69,7 @@ class Project extends Base
             'description' => $description
         );
 
-        list($valid,) = $this->project->validateCreation($values);
+        list($valid, ) = $this->project->validateCreation($values);
         return $valid ? $this->project->create($values) : false;
     }
 
@@ -79,7 +81,7 @@ class Project extends Base
             'description' => $description
         );
 
-        list($valid,) = $this->project->validateModification($values);
+        list($valid, ) = $this->project->validateModification($values);
         return $valid && $this->project->update($values);
     }
 }

@@ -1,8 +1,9 @@
 <?php
 
-namespace Core;
+namespace Kanboard\Core;
 
 use ArrayAccess;
+use Kanboard\Core\Http\Request;
 
 /**
  * Session class
@@ -12,15 +13,6 @@ use ArrayAccess;
  */
 class Session implements ArrayAccess
 {
-    /**
-     * Sesion lifetime
-     *
-     * http://php.net/manual/en/session.configuration.php#ini.session.cookie-lifetime
-     *
-     * @var integer
-     */
-    const SESSION_LIFETIME = 0; // Until the browser is closed
-
     /**
      * Return true if the session is open
      *
@@ -41,11 +33,9 @@ class Session implements ArrayAccess
      */
     public function open($base_path = '/')
     {
-        $base_path = str_replace('\\', '/', $base_path);
-        
         // HttpOnly and secure flags for session cookie
         session_set_cookie_params(
-            self::SESSION_LIFETIME,
+            SESSION_DURATION,
             $base_path ?: '/',
             null,
             Request::isHTTPS(),
@@ -56,7 +46,9 @@ class Session implements ArrayAccess
         ini_set('session.use_only_cookies', '1');
 
         // Enable strict mode
-        ini_set('session.use_strict_mode', '1');
+        if (version_compare(PHP_VERSION, '7.0.0') < 0) {
+            ini_set('session.use_strict_mode', '1');
+        }
 
         // Ensure session ID integrity
         ini_set('session.entropy_file', '/dev/urandom');

@@ -1,8 +1,8 @@
 <?php
 
-namespace Action;
+namespace Kanboard\Action;
 
-use Model\Task;
+use Kanboard\Model\Task;
 
 /**
  * Move a task to another column when an assignee is set
@@ -22,6 +22,7 @@ class TaskMoveColumnAssigned extends Base
     {
         return array(
             Task::EVENT_ASSIGNEE_CHANGE,
+            Task::EVENT_UPDATE,
         );
     }
 
@@ -85,6 +86,6 @@ class TaskMoveColumnAssigned extends Base
      */
     public function hasRequiredCondition(array $data)
     {
-        return $data['column_id'] == $this->getParam('src_column_id') && $data['owner_id'];
+        return $data['column_id'] == $this->getParam('src_column_id') && $data['owner_id'] > 0;
     }
 }

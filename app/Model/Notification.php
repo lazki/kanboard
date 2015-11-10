@@ -1,12 +1,9 @@
 <?php
 
-namespace Model;
-
-use Core\Session;
-use Core\Translator;
+namespace Kanboard\Model;
 
 /**
- * Notification model
+ * Notification
  *
  * @package  model
  * @author   Frederic Guillot
@@ -14,391 +11,132 @@ use Core\Translator;
 class Notification extends Base
 {
     /**
-     * SQL table name
-     *
-     * @var string
-     */
-    const TABLE = 'user_has_notifications';
-
-    /**
-     * User filters
-     *
-     * @var integer
-     */
-    const FILTER_NONE      = 1;
-    const FILTER_ASSIGNEE  = 2;
-    const FILTER_CREATOR   = 3;
-    const FILTER_BOTH      = 4;
-
-    /**
-     * Send overdue tasks
+     * Get the event title with author
      *
      * @access public
-     */
-    public function sendOverdueTaskNotifications()
-    {
-        $tasks = $this->taskFinder->getOverdueTasks();
-        $projects = array();
-
-        foreach ($this->groupByColumn($tasks, 'project_id') as $project_id => $project_tasks) {
-
-            // Get the list of users that should receive notifications for each projects
-            $users = $this->notification->getUsersWithNotificationEnabled($project_id);
-
-            foreach ($users as $user) {
-                $this->sendUserOverdueTaskNotifications($user, $project_tasks);
-            }
-        }
-
-        return $tasks;
-    }
-
-    /**
-     * Send overdue tasks for a given user
-     *
-     * @access public
-     * @param  array   $user
-     * @param  array   $tasks
-     */
-    public function sendUserOverdueTaskNotifications(array $user, array $tasks)
-    {
-        $user_tasks = array();
-
-        foreach ($tasks as $task) {
-            if ($this->notification->shouldReceiveNotification($user, array('task' => $task))) {
-                $user_tasks[] = $task;
-            }
-        }
-
-        if (! empty($user_tasks)) {
-            $this->sendEmailNotification(
-                $user,
-                Task::EVENT_OVERDUE,
-                array('tasks' => $user_tasks, 'project_name' => $tasks[0]['project_name'])
-            );
-        }
-    }
-
-    /**
-     * Send notifications to people
-     *
-     * @access public
-     * @param  string $event_name
-     * @param  array  $event_data
-     */
-    public function sendNotifications($event_name, array $event_data)
-    {
-        $logged_user_id = $this->userSession->isLogged() ? $this->userSession->getId() : 0;
-        $users = $this->notification->getUsersWithNotificationEnabled($event_data['task']['project_id'], $logged_user_id);
-
-        foreach ($users as $user) {
-            if ($this->shouldReceiveNotification($user, $event_data)) {
-                $this->sendEmailNotification($user, $event_name, $event_data);
-            }
-        }
-
-        // Restore locales
-        $this->config->setupTranslations();
-    }
-
-    /**
-     * Send email notification to someone
-     *
-     * @access public
-     * @param  array     $user        User
-     * @param  string    $event_name
-     * @param  array     $event_data
-     */
-    public function sendEmailNotification(array $user, $event_name, array $event_data)
-    {
-        // Use the user language otherwise use the application language (do not use the session language)
-        if (! empty($user['language'])) {
-            Translator::load($user['language']);
-        }
-        else {
-            Translator::load($this->config->get('application_language', 'en_US'));
-        }
-
-        $this->emailClient->send(
-            $user['email'],
-            $user['name'] ?: $user['username'],
-            $this->getMailSubject($event_name, $event_data),
-            $this->getMailContent($event_name, $event_data)
-        );
-    }
-
-    /**
-     * Return true if the user should receive notification
-     *
-     * @access public
-     * @param  array  $user
-     * @param  array  $event_data
-     * @return boolean
-     */
-    public function shouldReceiveNotification(array $user, array $event_data)
-    {
-        $filters = array(
-            'filterNone',
-            'filterAssignee',
-            'filterCreator',
-            'filterBoth',
-        );
-
-        foreach ($filters as $filter) {
-            if ($this->$filter($user, $event_data)) {
-                return $this->filterProject($user, $event_data);
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Return true if the user will receive all notifications
-     *
-     * @access public
-     * @param  array  $user
-     * @param  array  $event_data
-     * @return boolean
-     */
-    public function filterNone(array $user, array $event_data)
-    {
-        return $user['notifications_filter'] == self::FILTER_NONE;
-    }
-
-    /**
-     * Return true if the user is the assignee and selected the filter "assignee"
-     *
-     * @access public
-     * @param  array  $user
-     * @param  array  $event_data
-     * @return boolean
-     */
-    public function filterAssignee(array $user, array $event_data)
-    {
-        return $user['notifications_filter'] == self::FILTER_ASSIGNEE && $event_data['task']['owner_id'] == $user['id'];
-    }
-
-    /**
-     * Return true if the user is the creator and enabled the filter "creator"
-     *
-     * @access public
-     * @param  array  $user
-     * @param  array  $event_data
-     * @return boolean
-     */
-    public function filterCreator(array $user, array $event_data)
-    {
-        return $user['notifications_filter'] == self::FILTER_CREATOR && $event_data['task']['creator_id'] == $user['id'];
-    }
-
-    /**
-     * Return true if the user is the assignee or the creator and selected the filter "both"
-     *
-     * @access public
-     * @param  array  $user
-     * @param  array  $event_data
-     * @return boolean
-     */
-    public function filterBoth(array $user, array $event_data)
-    {
-        return $user['notifications_filter'] == self::FILTER_BOTH &&
-               ($event_data['task']['creator_id'] == $user['id'] || $event_data['task']['owner_id'] == $user['id']);
-    }
-
-    /**
-     * Return true if the user want to receive notification for the selected project
-     *
-     * @access public
-     * @param  array  $user
-     * @param  array  $event_data
-     * @return boolean
-     */
-    public function filterProject(array $user, array $event_data)
-    {
-        $projects = $this->db->table(self::TABLE)->eq('user_id', $user['id'])->findAllByColumn('project_id');
-
-        if (! empty($projects)) {
-            return in_array($event_data['task']['project_id'], $projects);
-        }
-
-        return true;
-    }
-
-    /**
-     * Get a list of people with notifications enabled
-     *
-     * @access public
-     * @param  integer   $project_id        Project id
-     * @param  array     $exclude_user_id   User id to exclude
-     * @return array
-     */
-    public function getUsersWithNotificationEnabled($project_id, $exclude_user_id = 0)
-    {
-        if ($this->projectPermission->isEverybodyAllowed($project_id)) {
-
-            return $this->db
-                        ->table(User::TABLE)
-                        ->columns(User::TABLE.'.id', User::TABLE.'.username', User::TABLE.'.name', User::TABLE.'.email', User::TABLE.'.language', User::TABLE.'.notifications_filter')
-                        ->eq('notifications_enabled', '1')
-                        ->neq('email', '')
-                        ->neq(User::TABLE.'.id', $exclude_user_id)
-                        ->findAll();
-        }
-
-        return $this->db
-            ->table(ProjectPermission::TABLE)
-            ->columns(User::TABLE.'.id', User::TABLE.'.username', User::TABLE.'.name', User::TABLE.'.email', User::TABLE.'.language', User::TABLE.'.notifications_filter')
-            ->join(User::TABLE, 'id', 'user_id')
-            ->eq('project_id', $project_id)
-            ->eq('notifications_enabled', '1')
-            ->neq('email', '')
-            ->neq(User::TABLE.'.id', $exclude_user_id)
-            ->findAll();
-    }
-
-    /**
-     * Get the mail content for a given template name
-     *
-     * @access public
-     * @param  string    $event_name  Event name
-     * @param  array     $event_data  Event data
+     * @param  string  $event_author
+     * @param  string  $event_name
+     * @param  array   $event_data
      * @return string
      */
-    public function getMailContent($event_name, array $event_data)
+    public function getTitleWithAuthor($event_author, $event_name, array $event_data)
     {
-        return $this->template->render(
-            'notification/'.str_replace('.', '_', $event_name),
-            $event_data + array('application_url' => $this->config->get('application_url'))
-        );
-    }
+        switch ($event_name) {
+            case Task::EVENT_ASSIGNEE_CHANGE:
+                $assignee = $event_data['task']['assignee_name'] ?: $event_data['task']['assignee_username'];
 
-    /**
-     * Get the mail subject for a given template name
-     *
-     * @access public
-     * @param  string    $event_name  Event name
-     * @param  array     $event_data  Event data
-     * @return string
-     */
-    public function getMailSubject($template, array $data)
-    {
-        switch ($template) {
+                if (! empty($assignee)) {
+                    return e('%s change the assignee of the task #%d to %s', $event_author, $event_data['task']['id'], $assignee);
+                }
+
+                return e('%s remove the assignee of the task %s', $event_author, e('#%d', $event_data['task']['id']));
+            case Task::EVENT_UPDATE:
+                return e('%s updated the task #%d', $event_author, $event_data['task']['id']);
             case Task::EVENT_CREATE:
-                $subject = $this->getStandardMailSubject(e('New attachment'), $data);
+                return e('%s created the task #%d', $event_author, $event_data['task']['id']);
+            case Task::EVENT_CLOSE:
+                return e('%s closed the task #%d', $event_author, $event_data['task']['id']);
+            case Task::EVENT_OPEN:
+                return e('%s open the task #%d', $event_author, $event_data['task']['id']);
+            case Task::EVENT_MOVE_COLUMN:
+                return e(
+                    '%s moved the task #%d to the column "%s"',
+                    $event_author,
+                    $event_data['task']['id'],
+                    $event_data['task']['column_title']
+                );
+            case Task::EVENT_MOVE_POSITION:
+                return e(
+                    '%s moved the task #%d to the position %d in the column "%s"',
+                    $event_author,
+                    $event_data['task']['id'],
+                    $event_data['task']['position'],
+                    $event_data['task']['column_title']
+                );
+            case Task::EVENT_MOVE_SWIMLANE:
+                if ($event_data['task']['swimlane_id'] == 0) {
+                    return e('%s moved the task #%d to the first swimlane', $event_author, $event_data['task']['id']);
+                }
+
+                return e(
+                    '%s moved the task #%d to the swimlane "%s"',
+                    $event_author,
+                    $event_data['task']['id'],
+                    $event_data['task']['swimlane_name']
+                );
+            case Subtask::EVENT_UPDATE:
+                return e('%s updated a subtask for the task #%d', $event_author, $event_data['task']['id']);
+            case Subtask::EVENT_CREATE:
+                return e('%s created a subtask for the task #%d', $event_author, $event_data['task']['id']);
+            case Comment::EVENT_UPDATE:
+                return e('%s updated a comment on the task #%d', $event_author, $event_data['task']['id']);
+            case Comment::EVENT_CREATE:
+                return e('%s commented on the task #%d', $event_author, $event_data['task']['id']);
+            case File::EVENT_CREATE:
+                return e('%s attached a file to the task #%d', $event_author, $event_data['task']['id']);
+            default:
+                return e('Notification');
+        }
+    }
+
+    /**
+     * Get the event title without author
+     *
+     * @access public
+     * @param  string  $event_name
+     * @param  array   $event_data
+     * @return string
+     */
+    public function getTitleWithoutAuthor($event_name, array $event_data)
+    {
+        switch ($event_name) {
+            case File::EVENT_CREATE:
+                $title = e('New attachment on task #%d: %s', $event_data['file']['task_id'], $event_data['file']['name']);
                 break;
             case Comment::EVENT_CREATE:
-                $subject = $this->getStandardMailSubject(e('New comment'), $data);
+                $title = e('New comment on task #%d', $event_data['comment']['task_id']);
                 break;
             case Comment::EVENT_UPDATE:
-                $subject = $this->getStandardMailSubject(e('Comment updated'), $data);
+                $title = e('Comment updated on task #%d', $event_data['comment']['task_id']);
                 break;
             case Subtask::EVENT_CREATE:
-                $subject = $this->getStandardMailSubject(e('New subtask'), $data);
+                $title = e('New subtask on task #%d', $event_data['subtask']['task_id']);
                 break;
             case Subtask::EVENT_UPDATE:
-                $subject = $this->getStandardMailSubject(e('Subtask updated'), $data);
+                $title = e('Subtask updated on task #%d', $event_data['subtask']['task_id']);
                 break;
             case Task::EVENT_CREATE:
-                $subject = $this->getStandardMailSubject(e('New task'), $data);
+                $title = e('New task #%d: %s', $event_data['task']['id'], $event_data['task']['title']);
                 break;
             case Task::EVENT_UPDATE:
-                $subject = $this->getStandardMailSubject(e('Task updated'), $data);
+                $title = e('Task updated #%d', $event_data['task']['id']);
                 break;
             case Task::EVENT_CLOSE:
-                $subject = $this->getStandardMailSubject(e('Task closed'), $data);
+                $title = e('Task #%d closed', $event_data['task']['id']);
                 break;
             case Task::EVENT_OPEN:
-                $subject = $this->getStandardMailSubject(e('Task opened'), $data);
+                $title = e('Task #%d opened', $event_data['task']['id']);
                 break;
             case Task::EVENT_MOVE_COLUMN:
-                $subject = $this->getStandardMailSubject(e('Column Change'), $data);
+                $title = e('Column changed for task #%d', $event_data['task']['id']);
                 break;
             case Task::EVENT_MOVE_POSITION:
-                $subject = $this->getStandardMailSubject(e('Position Change'), $data);
+                $title = e('New position for task #%d', $event_data['task']['id']);
+                break;
+            case Task::EVENT_MOVE_SWIMLANE:
+                $title = e('Swimlane changed for task #%d', $event_data['task']['id']);
                 break;
             case Task::EVENT_ASSIGNEE_CHANGE:
-                $subject = $this->getStandardMailSubject(e('Assignee Change'), $data);
+                $title = e('Assignee changed on task #%d', $event_data['task']['id']);
                 break;
             case Task::EVENT_OVERDUE:
-                $subject = e('[%s] Overdue tasks', $data['project_name']);
+                $nb = count($event_data['tasks']);
+                $title = $nb > 1 ? e('%d overdue tasks', $nb) : e('Task #%d is overdue', $event_data['tasks'][0]['id']);
                 break;
             default:
-                $subject = e('Notification');
+                $title = e('Notification');
         }
 
-        return $subject;
-    }
-
-    /**
-     * Get the mail subject for a given label
-     *
-     * @access private
-     * @param  string    $label       Label
-     * @param  array     $data        Template data
-     * @return string
-     */
-    private function getStandardMailSubject($label, array $data)
-    {
-        return sprintf('[%s][%s] %s (#%d)', $data['task']['project_name'], $label, $data['task']['title'], $data['task']['id']);
-    }
-
-    /**
-     * Save settings for the given user
-     *
-     * @access public
-     * @param  integer   $user_id   User id
-     * @param  array     $values    Form values
-     */
-    public function saveSettings($user_id, array $values)
-    {
-        // Delete all selected projects
-        $this->db->table(self::TABLE)->eq('user_id', $user_id)->remove();
-
-        if (isset($values['notifications_enabled']) && $values['notifications_enabled'] == 1) {
-
-            // Activate notifications
-            $this->db->table(User::TABLE)->eq('id', $user_id)->update(array(
-                'notifications_enabled' => '1',
-                'notifications_filter'  => empty($values['notifications_filter']) ? self::FILTER_BOTH : $values['notifications_filter'],
-            ));
-
-            // Save selected projects
-            if (! empty($values['projects'])) {
-
-                foreach ($values['projects'] as $project_id => $checkbox_value) {
-                    $this->db->table(self::TABLE)->insert(array(
-                        'user_id' => $user_id,
-                        'project_id' => $project_id,
-                    ));
-                }
-            }
-        }
-        else {
-
-            // Disable notifications
-            $this->db->table(User::TABLE)->eq('id', $user_id)->update(array(
-                'notifications_enabled' => '0'
-            ));
-        }
-    }
-
-    /**
-     * Read user settings to display the form
-     *
-     * @access public
-     * @param  integer   $user_id   User id
-     * @return array
-     */
-    public function readSettings($user_id)
-    {
-        $values = $this->db->table(User::TABLE)->eq('id', $user_id)->columns('notifications_enabled', 'notifications_filter')->findOne();
-        $projects = $this->db->table(self::TABLE)->eq('user_id', $user_id)->findAllByColumn('project_id');
-
-        foreach ($projects as $project_id) {
-            $values['project_'.$project_id] = true;
-        }
-
-        return $values;
+        return $title;
     }
 }

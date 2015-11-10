@@ -1,14 +1,8 @@
 <?php
 
-namespace Controller;
+namespace Kanboard\Controller;
 
 use Pimple\Container;
-use Core\Security;
-use Core\Request;
-use Core\Response;
-use Core\Template;
-use Core\Session;
-use Model\LastLogin;
 use Symfony\Component\EventDispatcher\Event;
 
 /**
@@ -17,24 +11,8 @@ use Symfony\Component\EventDispatcher\Event;
  * @package  controller
  * @author   Frederic Guillot
  */
-abstract class Base extends \Core\Base
+abstract class Base extends \Kanboard\Core\Base
 {
-    /**
-     * Request instance
-     *
-     * @accesss protected
-     * @var \Core\Request
-     */
-    protected $request;
-
-    /**
-     * Response instance
-     *
-     * @accesss protected
-     * @var \Core\Response
-     */
-    protected $response;
-
     /**
      * Constructor
      *
@@ -44,11 +22,9 @@ abstract class Base extends \Core\Base
     public function __construct(Container $container)
     {
         $this->container = $container;
-        $this->request = new Request;
-        $this->response = new Response;
 
         if (DEBUG) {
-            $this->container['logger']->debug('START_REQUEST='.$_SERVER['REQUEST_URI']);
+            $this->logger->debug('START_REQUEST='.$_SERVER['REQUEST_URI']);
         }
     }
 
@@ -60,14 +36,14 @@ abstract class Base extends \Core\Base
     public function __destruct()
     {
         if (DEBUG) {
-
-            foreach ($this->container['db']->getLogMessages() as $message) {
-                $this->container['logger']->debug($message);
+            foreach ($this->db->getLogMessages() as $message) {
+                $this->logger->debug($message);
             }
 
-            $this->container['logger']->debug('SQL_QUERIES={nb}', array('nb' => $this->container['db']->nb_queries));
-            $this->container['logger']->debug('RENDERING={time}', array('time' => microtime(true) - @$_SERVER['REQUEST_TIME_FLOAT']));
-            $this->container['logger']->debug('END_REQUEST='.$_SERVER['REQUEST_URI']);
+            $this->logger->debug('SQL_QUERIES={nb}', array('nb' => $this->container['db']->nbQueries));
+            $this->logger->debug('RENDERING={time}', array('time' => microtime(true) - @$_SERVER['REQUEST_TIME_FLOAT']));
+            $this->logger->debug('MEMORY='.$this->helper->text->bytes(memory_get_usage()));
+            $this->logger->debug('END_REQUEST='.$_SERVER['REQUEST_URI']);
         }
     }
 
@@ -79,7 +55,7 @@ abstract class Base extends \Core\Base
     private function sendHeaders($action)
     {
         // HTTP secure headers
-        $this->response->csp(array('style-src' => "'self' 'unsafe-inline'", 'img-src' => '*'));
+        $this->response->csp($this->container['cspRules']);
         $this->response->nosniff();
         $this->response->xss();
 
@@ -101,7 +77,7 @@ abstract class Base extends \Core\Base
     public function beforeAction($controller, $action)
     {
         // Start the session
-        $this->session->open(BASE_URL_DIRECTORY);
+        $this->session->open($this->helper->url->dir());
         $this->sendHeaders($action);
         $this->container['dispatcher']->dispatch('session.bootstrap', new Event);
 
@@ -122,12 +98,12 @@ abstract class Base extends \Core\Base
     public function handleAuthentication()
     {
         if (! $this->authentication->isAuthenticated()) {
-
             if ($this->request->isAjax()) {
                 $this->response->text('Not Authorized', 401);
             }
 
-            $this->response->redirect($this->helper->url->to('auth', 'login', array('redirect_query' => urlencode($this->request->getQueryString()))));
+            $this->session['login_redirect'] = $this->request->getUri();
+            $this->response->redirect($this->helper->url->to('auth', 'login'));
         }
     }
 
@@ -141,7 +117,6 @@ abstract class Base extends \Core\Base
         $ignore = ($controller === 'twofactor' && in_array($action, array('code', 'check'))) || ($controller === 'auth' && $action === 'logout');
 
         if ($ignore === false && $this->userSession->has2FA() && ! $this->userSession->check2FA()) {
-
             if ($this->request->isAjax()) {
                 $this->response->text('Not Authorized', 401);
             }
@@ -205,20 +180,21 @@ abstract class Base extends \Core\Base
      */
     protected function checkCSRFParam()
     {
-        if (! Security::validateCSRFToken($this->request->getStringParam('csrf_token'))) {
+        if (! $this->token->validateCSRFToken($this->request->getStringParam('csrf_token'))) {
             $this->forbidden();
         }
     }
 
     /**
-     * Redirection when there is no project in the database
+     * Check webhook token
      *
      * @access protected
      */
-    protected function redirectNoProject()
+    protected function checkWebhookToken()
     {
-        $this->session->flash(t('There is no active project, the first step is to create a new project.'));
-        $this->response->redirect('?controller=project&action=create');
+        if ($this->config->get('webhook_token') !== $this->request->getStringParam('token')) {
+            $this->response->text('Not Authorized', 401);
+        }
     }
 
     /**
@@ -266,10 +242,15 @@ abstract class Base extends \Core\Base
      */
     protected function getTask()
     {
+        $project_id = $this->request->getIntegerParam('project_id');
         $task = $this->taskFinder->getDetails($this->request->getIntegerParam('task_id'));
 
         if (empty($task)) {
             $this->notfound();
+        }
+
+        if ($project_id !== 0 && $project_id != $task['project_id']) {
+            $this->forbidden();
         }
 
         return $task;
@@ -289,9 +270,59 @@ abstract class Base extends \Core\Base
 
         if (empty($project)) {
             $this->session->flashError(t('Project not found.'));
-            $this->response->redirect('?controller=project');
+            $this->response->redirect($this->helper->url->to('project', 'index'));
         }
 
         return $project;
+    }
+
+    /**
+     * Common method to get the user
+     *
+     * @access protected
+     * @return array
+     */
+    protected function getUser()
+    {
+        $user = $this->user->getById($this->request->getIntegerParam('user_id', $this->userSession->getId()));
+
+        if (empty($user)) {
+            $this->notfound();
+        }
+
+        if (! $this->userSession->isAdmin() && $this->userSession->getId() != $user['id']) {
+            $this->forbidden();
+        }
+
+        return $user;
+    }
+
+    /**
+     * Common method to get project filters
+     *
+     * @access protected
+     */
+    protected function getProjectFilters($controller, $action)
+    {
+        $project = $this->getProject();
+        $search = $this->request->getStringParam('search', $this->userSession->getFilters($project['id']));
+        $board_selector = $this->projectPermission->getAllowedProjects($this->userSession->getId());
+        unset($board_selector[$project['id']]);
+
+        $filters = array(
+            'controller' => $controller,
+            'action' => $action,
+            'project_id' => $project['id'],
+            'search' => urldecode($search),
+        );
+
+        $this->userSession->setFilters($project['id'], $filters['search']);
+
+        return array(
+            'project' => $project,
+            'board_selector' => $board_selector,
+            'filters' => $filters,
+            'title' => $project['name'],
+        );
     }
 }

@@ -1,6 +1,6 @@
 <?php
 
-namespace Core;
+namespace Kanboard\Core;
 
 use Pimple\Container;
 use PicoDb\Table;
@@ -313,7 +313,7 @@ class Paginator
             $this->page = 1;
         }
 
-        $this->offset = ($this->page - 1) * $this->limit;
+        $this->offset = (int) (($this->page - 1) * $this->limit);
 
         return $this;
     }
@@ -355,8 +355,7 @@ class Paginator
                 $this->action,
                 $this->getUrlParams($this->page - 1, $this->order, $this->direction)
             );
-        }
-        else {
+        } else {
             $html .= '&larr; '.t('Previous');
         }
 
@@ -382,8 +381,7 @@ class Paginator
                 $this->action,
                 $this->getUrlParams($this->page + 1, $this->order, $this->direction)
             );
-        }
-        else {
+        } else {
             $html .= t('Next').' &rarr;';
         }
 

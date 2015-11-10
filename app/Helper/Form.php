@@ -1,8 +1,8 @@
 <?php
 
-namespace Helper;
+namespace Kanboard\Helper;
 
-use Core\Security;
+use Kanboard\Core\Base;
 
 /**
  * Form helpers
@@ -10,7 +10,7 @@ use Core\Security;
  * @package helper
  * @author  Frederic Guillot
  */
-class Form extends \Core\Base
+class Form extends Base
 {
     /**
      * Hidden CSRF token field
@@ -20,7 +20,7 @@ class Form extends \Core\Base
      */
     public function csrf()
     {
-        return '<input type="hidden" name="csrf_token" value="'.Security::getCSRFToken().'"/>';
+        return '<input type="hidden" name="csrf_token" value="'.$this->token->getCSRFToken().'"/>';
     }
 
     /**
@@ -52,11 +52,14 @@ class Form extends \Core\Base
         $html = '<select name="'.$name.'" id="form-'.$name.'" class="'.$class.'" '.implode(' ', $attributes).'>';
 
         foreach ($options as $id => $value) {
-
             $html .= '<option value="'.$this->helper->e($id).'"';
 
-            if (isset($values->$name) && $id == $values->$name) $html .= ' selected="selected"';
-            if (isset($values[$name]) && $id == $values[$name]) $html .= ' selected="selected"';
+            if (isset($values->$name) && $id == $values->$name) {
+                $html .= ' selected="selected"';
+            }
+            if (isset($values[$name]) && $id == $values[$name]) {
+                $html .= ' selected="selected"';
+            }
 
             $html .= '>'.$this->helper->e($value).'</option>';
         }
@@ -101,6 +104,26 @@ class Form extends \Core\Base
     public function radio($name, $label, $value, $selected = false, $class = '')
     {
         return '<label><input type="radio" name="'.$name.'" class="'.$class.'" value="'.$this->helper->e($value).'" '.($selected ? 'checked="checked"' : '').'> '.$this->helper->e($label).'</label>';
+    }
+
+    /**
+     * Display a checkboxes group
+     *
+     * @access public
+     * @param  string  $name     Field name
+     * @param  array   $options  Options
+     * @param  array   $values   Form values
+     * @return string
+     */
+    public function checkboxes($name, array $options, array $values = array())
+    {
+        $html = '';
+
+        foreach ($options as $value => $label) {
+            $html .= $this->checkbox($name.'['.$value.']', $label, $value, isset($values[$name]) && in_array($value, $values[$name]));
+        }
+
+        return $html;
     }
 
     /**
@@ -152,6 +175,23 @@ class Form extends \Core\Base
         $html .= implode(' ', $attributes).'>';
         $html .= isset($values->$name) ? $this->helper->e($values->$name) : isset($values[$name]) ? $values[$name] : '';
         $html .= '</textarea>';
+        $html .= $this->errorList($errors, $name);
+
+        return $html;
+    }
+
+    /**
+     * Display file field
+     *
+     * @access public
+     * @param  string  $name
+     * @param  array   $errors
+     * @param  boolean $multiple
+     * @return string
+     */
+    public function file($name, array $errors = array(), $multiple = false)
+    {
+        $html = '<input type="file" name="'.$name.'" id="form-'.$name.'" '.($multiple ? 'multiple' : '').'>';
         $html .= $this->errorList($errors, $name);
 
         return $html;
@@ -291,7 +331,6 @@ class Form extends \Core\Base
         $html = '';
 
         if (isset($errors[$name])) {
-
             $html .= '<ul class="form-errors">';
 
             foreach ($errors[$name] as $error) {

@@ -1,8 +1,8 @@
 <?php
 
-namespace Helper;
+namespace Kanboard\Helper;
 
-use Core\Markdown;
+use Kanboard\Core\Markdown;
 
 /**
  * Text helpers
@@ -10,7 +10,7 @@ use Core\Markdown;
  * @package helper
  * @author  Frederic Guillot
  */
-class Text extends \Core\Base
+class Text extends \Kanboard\Core\Base
 {
     /**
      * Markdown transformation
@@ -39,25 +39,6 @@ class Text extends \Core\Base
         $suffixes = array('', 'k', 'M', 'G', 'T');
 
         return round(pow(1024, $base - floor($base)), $precision).$suffixes[(int)floor($base)];
-    }
-
-    /**
-     * Truncate a long text
-     *
-     * @param  string    $value         Text
-     * @param  integer   $max_length    Max Length
-     * @param  string    $end           Text end
-     * @return string
-     */
-    public function truncate($value, $max_length = 85, $end = '[...]')
-    {
-        $length = strlen($value);
-
-        if ($length > $max_length) {
-            return substr($value, 0, $max_length).' '.$end;
-        }
-
-        return $value;
     }
 
     /**

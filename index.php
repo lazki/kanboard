@@ -1,9 +1,8 @@
 <?php
 
-require __DIR__.'/app/check_setup.php';
-require __DIR__.'/app/common.php';
-
-use Core\Router;
-
-$router = new Router($container);
-$router->execute();
+try {
+    require __DIR__.'/app/common.php';
+    $container['router']->dispatch($_SERVER['REQUEST_URI'], isset($_SERVER['QUERY_STRING']) ? $_SERVER['QUERY_STRING'] : '');
+} catch (Exception $e) {
+    echo 'Internal Error: '.$e->getMessage();
+}

@@ -1,6 +1,6 @@
 <?php
 
-namespace Model;
+namespace Kanboard\Model;
 
 use SimpleValidator\Validator;
 use SimpleValidator\Validators;
@@ -30,7 +30,7 @@ class Category extends Base
      */
     public function exists($category_id, $project_id)
     {
-        return $this->db->table(self::TABLE)->eq('id', $category_id)->eq('project_id', $project_id)->count() > 0;
+        return $this->db->table(self::TABLE)->eq('id', $category_id)->eq('project_id', $project_id)->exists();
     }
 
     /**
@@ -58,7 +58,7 @@ class Category extends Base
     }
 
     /**
-     * Get a category id by the project and the name
+     * Get a category id by the category name and project id
      *
      * @access public
      * @param  integer   $project_id      Project id
@@ -71,38 +71,6 @@ class Category extends Base
                         ->eq('project_id', $project_id)
                         ->eq('name', $category_name)
                         ->findOneColumn('id');
-    }
-
-    /**
-     * Prepare categories to be displayed on the board
-     *
-     * @access public
-     * @param  integer   $project_id
-     * @return array
-     */
-    public function getBoardCategories($project_id)
-    {
-        $descriptions = array();
-
-        $listing = array(
-            -1 => t('All categories'),
-            0 => t('No category'),
-        );
-
-        $categories = $this->db->table(self::TABLE)
-                               ->eq('project_id', $project_id)
-                               ->asc('name')
-                               ->findAll();
-
-        foreach ($categories as $category) {
-            $listing[$category['id']] = $category['name'];
-            $descriptions[$category['id']] = $category['description'];
-        }
-
-        return array(
-            $listing,
-            $descriptions,
-        );
     }
 
     /**
@@ -160,7 +128,6 @@ class Category extends Base
         $categories = explode(',', $this->config->get('project_categories'));
 
         foreach ($categories as $category) {
-
             $category = trim($category);
 
             if (! empty($category)) {
@@ -236,7 +203,6 @@ class Category extends Base
                                ->findAll();
 
         foreach ($categories as $category) {
-
             $category['project_id'] = $dst_project_id;
 
             if (! $this->db->table(self::TABLE)->save($category)) {

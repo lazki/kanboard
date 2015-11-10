@@ -1,10 +1,10 @@
 <?php
 
-namespace Model;
+namespace Kanboard\Model;
 
-use Core\Translator;
-use Core\Security;
-use Core\Session;
+use Kanboard\Core\Translator;
+use Kanboard\Core\Security\Token;
+use Kanboard\Core\Session;
 
 /**
  * Config model
@@ -12,15 +12,8 @@ use Core\Session;
  * @package  model
  * @author   Frederic Guillot
  */
-class Config extends Base
+class Config extends Setting
 {
-    /**
-     * SQL table name
-     *
-     * @var string
-     */
-    const TABLE = 'settings';
-
     /**
      * Get available currencies
      *
@@ -41,6 +34,7 @@ class Config extends Base
             'JPY' => t('JPY - Japanese Yen'),
             'RSD' => t('RSD - Serbian dinar'),
             'SEK' => t('SEK - Swedish Krona'),
+            'NOK' => t('NOK - Norwegian Krone'),
         );
     }
 
@@ -74,6 +68,8 @@ class Config extends Base
     {
         // Sorted by value
         $languages = array(
+            'id_ID' => 'Bahasa Indonesia',
+            'cs_CZ' => 'Čeština',
             'da_DK' => 'Dansk',
             'de_DE' => 'Deutsch',
             'en_US' => 'English',
@@ -82,7 +78,9 @@ class Config extends Base
             'it_IT' => 'Italiano',
             'hu_HU' => 'Magyar',
             'nl_NL' => 'Nederlands',
+            'nb_NO' => 'Norsk',
             'pl_PL' => 'Polski',
+            'pt_PT' => 'Português',
             'pt_BR' => 'Português (Brasil)',
             'ru_RU' => 'Русский',
             'sr_Latn_RS' => 'Srpski',
@@ -110,6 +108,7 @@ class Config extends Base
     public function getJsLanguageCode()
     {
         $languages = array(
+            'cs_CZ' => 'cz',
             'da_DK' => 'da',
             'de_DE' => 'de',
             'en_US' => 'en',
@@ -118,7 +117,9 @@ class Config extends Base
             'it_IT' => 'it',
             'hu_HU' => 'hu',
             'nl_NL' => 'nl',
+            'nb_NO' => 'nb',
             'pl_PL' => 'pl',
+            'pt_PT' => 'pt',
             'pt_BR' => 'pt-br',
             'ru_RU' => 'ru',
             'sr_Latn_RS' => 'sr',
@@ -128,6 +129,7 @@ class Config extends Base
             'zh_CN' => 'zh-cn',
             'ja_JP' => 'ja',
             'th_TH' => 'th',
+            'id_ID' => 'id'
         );
 
         $lang = $this->getCurrentLanguage();
@@ -161,8 +163,7 @@ class Config extends Base
     public function get($name, $default_value = '')
     {
         if (! Session::isOpen()) {
-            $value = $this->db->table(self::TABLE)->eq('option', $name)->findOneColumn('value');
-            return $value ?: $default_value;
+            return $this->getOption($name, $default_value);
         }
 
         // Cache config in session
@@ -175,38 +176,6 @@ class Config extends Base
         }
 
         return $default_value;
-    }
-
-    /**
-     * Get all settings
-     *
-     * @access public
-     * @return array
-     */
-    public function getAll()
-    {
-        return $this->db->hashtable(self::TABLE)->getAll('option', 'value');
-    }
-
-    /**
-     * Save settings in the database
-     *
-     * @access public
-     * @param  $values  array   Settings values
-     * @return boolean
-     */
-    public function save(array $values)
-    {
-        foreach ($values as $option => $value) {
-
-            $result = $this->db->table(self::TABLE)->eq('option', $option)->update(array('value' => $value));
-
-            if (! $result) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /**
@@ -296,8 +265,21 @@ class Config extends Base
      */
     public function regenerateToken($option)
     {
-        return $this->db->table(self::TABLE)
-                 ->eq('option', $option)
-                 ->update(array('value' => Security::generateToken()));
+        $this->save(array($option => Token::getToken()));
+    }
+
+    /**
+     * Prepare data before save
+     *
+     * @access public
+     * @return array
+     */
+    public function prepare(array $values)
+    {
+        if (! empty($values['application_url']) && substr($values['application_url'], -1) !== '/') {
+            $values['application_url'] = $values['application_url'].'/';
+        }
+
+        return $values;
     }
 }

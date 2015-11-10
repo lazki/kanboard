@@ -1,10 +1,10 @@
 <?php
 
-namespace Model;
+namespace Kanboard\Model;
 
 use SimpleValidator\Validator;
 use SimpleValidator\Validators;
-use PicoDb\Table;
+use Kanboard\Event\TaskLinkEvent;
 
 /**
  * TaskLink model
@@ -21,6 +21,13 @@ class TaskLink extends Base
      * @var string
      */
     const TABLE = 'task_has_links';
+
+    /**
+     * Events
+     *
+     * @var string
+     */
+    const EVENT_CREATE_UPDATE = 'tasklink.create_update';
 
     /**
      * Get a task link
@@ -75,14 +82,20 @@ class TaskLink extends Base
                         Task::TABLE.'.owner_id AS task_assignee_id',
                         User::TABLE.'.username AS task_assignee_username',
                         User::TABLE.'.name AS task_assignee_name',
-                        Board::TABLE.'.title AS column_title'
+                        Board::TABLE.'.title AS column_title',
+                        Project::TABLE.'.name AS project_name'
                     )
                     ->eq(self::TABLE.'.task_id', $task_id)
                     ->join(Link::TABLE, 'id', 'link_id')
                     ->join(Task::TABLE, 'id', 'opposite_task_id')
                     ->join(Board::TABLE, 'id', 'column_id', Task::TABLE)
                     ->join(User::TABLE, 'id', 'owner_id', Task::TABLE)
-                    ->orderBy(Link::TABLE.'.id ASC, '.Board::TABLE.'.position ASC, '.Task::TABLE.'.is_active DESC, '.Task::TABLE.'.id', Table::SORT_ASC)
+                    ->join(Project::TABLE, 'id', 'project_id', Task::TABLE)
+                    ->asc(Link::TABLE.'.id')
+                    ->desc(Board::TABLE.'.position')
+                    ->desc(Task::TABLE.'.is_active')
+                    ->asc(Task::TABLE.'.position')
+                    ->asc(Task::TABLE.'.id')
                     ->findAll();
     }
 
@@ -99,7 +112,6 @@ class TaskLink extends Base
         $result = array();
 
         foreach ($links as $link) {
-
             if (! isset($result[$link['label']])) {
                 $result[$link['label']] = array();
             }
@@ -108,6 +120,20 @@ class TaskLink extends Base
         }
 
         return $result;
+    }
+
+    /**
+     * Publish events
+     *
+     * @access private
+     * @param  array $events
+     */
+    private function fireEvents(array $events)
+    {
+        foreach ($events as $event) {
+            $event['project_id'] = $this->taskFinder->getProjectId($event['task_id']);
+            $this->container['dispatcher']->dispatch(self::EVENT_CREATE_UPDATE, new TaskLinkEvent($event));
+        }
     }
 
     /**
@@ -121,28 +147,36 @@ class TaskLink extends Base
      */
     public function create($task_id, $opposite_task_id, $link_id)
     {
+        $events = array();
         $this->db->startTransaction();
 
         // Get opposite link
         $opposite_link_id = $this->link->getOppositeLinkId($link_id);
 
-        // Create the original task link
-        $this->db->table(self::TABLE)->insert(array(
+        $values = array(
             'task_id' => $task_id,
             'opposite_task_id' => $opposite_task_id,
             'link_id' => $link_id,
-        ));
+        );
 
-        $task_link_id = $this->db->getConnection()->getLastId();
+        // Create the original task link
+        $this->db->table(self::TABLE)->insert($values);
+        $task_link_id = $this->db->getLastId();
+        $events[] = $values;
 
         // Create the opposite task link
-        $this->db->table(self::TABLE)->insert(array(
+        $values = array(
             'task_id' => $opposite_task_id,
             'opposite_task_id' => $task_id,
             'link_id' => $opposite_link_id,
-        ));
+        );
+
+        $this->db->table(self::TABLE)->insert($values);
+        $events[] = $values;
 
         $this->db->closeTransaction();
+
+        $this->fireEvents($events);
 
         return (int) $task_link_id;
     }
@@ -159,6 +193,7 @@ class TaskLink extends Base
      */
     public function update($task_link_id, $task_id, $opposite_task_id, $link_id)
     {
+        $events = array();
         $this->db->startTransaction();
 
         // Get original task link
@@ -171,22 +206,33 @@ class TaskLink extends Base
         $opposite_link_id = $this->link->getOppositeLinkId($link_id);
 
         // Update the original task link
-        $rs1 = $this->db->table(self::TABLE)->eq('id', $task_link_id)->update(array(
+        $values = array(
             'task_id' => $task_id,
             'opposite_task_id' => $opposite_task_id,
             'link_id' => $link_id,
-        ));
+        );
+
+        $rs1 = $this->db->table(self::TABLE)->eq('id', $task_link_id)->update($values);
+        $events[] = $values;
 
         // Update the opposite link
-        $rs2 = $this->db->table(self::TABLE)->eq('id', $opposite_task_link['id'])->update(array(
+        $values = array(
             'task_id' => $opposite_task_id,
             'opposite_task_id' => $task_id,
             'link_id' => $opposite_link_id,
-        ));
+        );
+
+        $rs2 = $this->db->table(self::TABLE)->eq('id', $opposite_task_link['id'])->update($values);
+        $events[] = $values;
 
         $this->db->closeTransaction();
 
-        return $rs1 && $rs2;
+        if ($rs1 && $rs2) {
+            $this->fireEvents($events);
+            return true;
+        }
+
+        return false;
     }
 
     /**

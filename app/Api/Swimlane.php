@@ -1,6 +1,6 @@
 <?php
 
-namespace Api;
+namespace Kanboard\Api;
 
 /**
  * Swimlane API controller
@@ -8,7 +8,7 @@ namespace Api;
  * @package  api
  * @author   Frederic Guillot
  */
-class Swimlane extends Base
+class Swimlane extends \Kanboard\Core\Base
 {
     public function getActiveSwimlanes($project_id)
     {
@@ -40,14 +40,18 @@ class Swimlane extends Base
         return $this->swimlane->getDefault($project_id);
     }
 
-    public function addSwimlane($project_id, $name)
+    public function addSwimlane($project_id, $name, $description = '')
     {
-        return $this->swimlane->create($project_id, $name);
+        return $this->swimlane->create(array('project_id' => $project_id, 'name' => $name, 'description' => $description));
     }
 
-    public function updateSwimlane($swimlane_id, $name)
+    public function updateSwimlane($swimlane_id, $name, $description = null)
     {
-        return $this->swimlane->rename($swimlane_id, $name);
+        $values = array('id' => $swimlane_id, 'name' => $name);
+        if (!is_null($description)) {
+            $values['description'] = $description;
+        }
+        return $this->swimlane->update($values);
     }
 
     public function removeSwimlane($project_id, $swimlane_id)

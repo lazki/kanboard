@@ -1,6 +1,6 @@
 <?php
 
-namespace Helper;
+namespace Kanboard\Helper;
 
 /**
  * Assets helpers
@@ -8,7 +8,7 @@ namespace Helper;
  * @package helper
  * @author  Frederic Guillot
  */
-class Asset extends \Core\Base
+class Asset extends \Kanboard\Core\Base
 {
     /**
      * Add a Javascript asset
@@ -16,9 +16,9 @@ class Asset extends \Core\Base
      * @param  string   $filename   Filename
      * @return string
      */
-    public function js($filename)
+    public function js($filename, $async = false)
     {
-        return '<script type="text/javascript" src="'.$filename.'?'.filemtime($filename).'"></script>';
+        return '<script '.($async ? 'async' : '').' type="text/javascript" src="'.$this->helper->url->dir().$filename.'?'.filemtime($filename).'"></script>';
     }
 
     /**
@@ -31,7 +31,7 @@ class Asset extends \Core\Base
      */
     public function css($filename, $is_file = true, $media = 'screen')
     {
-        return '<link rel="stylesheet" href="'.$filename.($is_file ? '?'.filemtime($filename) : '').'" media="'.$media.'">';
+        return '<link rel="stylesheet" href="'.$this->helper->url->dir().$filename.($is_file ? '?'.filemtime($filename) : '').'" media="'.$media.'">';
     }
 
     /**
@@ -47,5 +47,16 @@ class Asset extends \Core\Base
         }
 
         return '';
+    }
+
+    /**
+     * Get CSS for task colors
+     *
+     * @access public
+     * @return string
+     */
+    public function colorCss()
+    {
+        return '<style>'.$this->color->getCss().'</style>';
     }
 }

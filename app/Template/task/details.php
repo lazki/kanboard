@@ -9,6 +9,11 @@
             <strong><?= t('Reference: %s', $task['reference']) ?></strong>
         </li>
         <?php endif ?>
+        <?php if (! empty($task['swimlane_name'])): ?>
+        <li>
+            <?= t('Swimlane: %s', $task['swimlane_name']) ?>
+        </li>
+        <?php endif ?>
         <li>
             <?= dt('Created on %B %e, %Y at %k:%M %p', $task['date_creation']) ?>
         </li>
@@ -81,7 +86,7 @@
         </li>
         <?php endif ?>
 
-        <?php if (! isset($not_editable) && $task['recurrence_status'] != \Model\Task::RECURRING_STATUS_NONE): ?>
+        <?php if (! isset($not_editable) && $task['recurrence_status'] != \Kanboard\Model\Task::RECURRING_STATUS_NONE): ?>
         <li>
             <strong><?= t('Recurring information') ?></strong>
             <?= $this->render('task/recurring_info', array(

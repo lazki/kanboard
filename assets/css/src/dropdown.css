@@ -1,63 +1,60 @@
 .dropdown {
+    display: inline;
     position: relative;
 }
 
-.dropdown li {
-    list-style: none;
-}
-
-/* submenu */
 .dropdown ul {
     display: none;
+}
+
+ul.dropdown-submenu-open {
+    display: block;
     position: absolute;
-    left: 0;
     z-index: 1000;
-    min-width: 230px;
+    min-width: 285px;
     list-style: none;
     margin: 3px 0 0 1px;
     padding: 6px 0;
     background-color: #fff;
     border: 1px solid #b2b2b2;
-    -webkit-border-radius: 3px;
-       -moz-border-radius: 3px;
-            border-radius: 3px;
-    -webkit-box-shadow: 0px 1px 3px rgba(0,0,0,0.15);
-       -moz-box-shadow: 0px 1px 3px rgba(0,0,0,0.15);
-            box-shadow: 0px 1px 3px rgba(0,0,0,0.15);
+    border-radius: 3px;
+    box-shadow: 0px 1px 3px rgba(0,0,0,0.15);
 }
 
-.dropdown ul li {
-    padding: 0;
-    margin: 0;
-    font-size: 1.1em;
+.dropdown-submenu-open li {
     display: block;
-    line-height: 30px;
+    margin: 0;
+    padding: 0;
     padding-left: 10px;
     padding-right: 10px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    font-size: 0.85em;
+    border-bottom: 1px solid #f8f8f8;
 }
 
-.page-header ul.dropdown {
-    display: inline;
+.dropdown-submenu-open li:last-child {
+    border: none;
 }
 
-.page-header a.dropdown-menu {
-    font-size: 1.1em;
+.dropdown-submenu-open li:hover {
+    background: #4078C0;
+    color: #fff;
 }
 
-.page-header li.dropit-trigger {
-    padding: 0;
+.dropdown-submenu-open li:hover a {
+    color: #fff;
 }
 
-td li.dropit-trigger {
-    margin: 0;
-}
-
-.task-board .dropit-submenu a {
-    font-weight: normal;
-    text-decoration: underline;
-    font-size: 0.9em;
-}
-
-.task-board .dropit-submenu a:hover {
+.dropdown-submenu-open a {
     text-decoration: none;
+    color: #333;
+}
+
+.dropdown-submenu-open a:focus {
+    text-decoration: underline;
+}
+
+.page-header .dropdown {
+    padding-right: 10px;
 }

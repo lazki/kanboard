@@ -1,8 +1,8 @@
 <?php
 
-namespace Controller;
+namespace Kanboard\Controller;
 
-use Model\Task as TaskModel;
+use Kanboard\Model\Task as TaskModel;
 
 /**
  * Project Calendar controller
@@ -20,20 +20,9 @@ class Calendar extends Base
      */
     public function show()
     {
-        $project = $this->getProject();
-
         $this->response->html($this->template->layout('calendar/show', array(
             'check_interval' => $this->config->get('board_private_refresh_interval'),
-            'users_list' => $this->projectPermission->getMemberList($project['id'], true, true),
-            'categories_list' => $this->category->getList($project['id'], true, true),
-            'columns_list' => $this->board->getColumnsList($project['id'], true),
-            'swimlanes_list' => $this->swimlane->getList($project['id'], true),
-            'colors_list' => $this->color->getList(true),
-            'status_list' => $this->taskStatus->getList(true),
-            'project' => $project,
-            'title' => t('Calendar for "%s"', $project['name']),
-            'board_selector' => $this->projectPermission->getAllowedProjects($this->userSession->getId()),
-        )));
+        ) + $this->getProjectFilters('calendar', 'show')));
     }
 
     /**
@@ -48,26 +37,25 @@ class Calendar extends Base
         $end = $this->request->getStringParam('end');
 
         // Common filter
-        $filter = $this->taskFilter
-            ->create()
-            ->filterByProject($project_id)
-            ->filterByCategory($this->request->getIntegerParam('category_id', -1))
-            ->filterByOwner($this->request->getIntegerParam('owner_id', -1))
-            ->filterByColumn($this->request->getIntegerParam('column_id', -1))
-            ->filterBySwimlane($this->request->getIntegerParam('swimlane_id', -1))
-            ->filterByColor($this->request->getStringParam('color_id'))
-            ->filterByStatus($this->request->getIntegerParam('is_active', -1));
+        $filter = $this->taskFilterCalendarFormatter
+            ->search($this->userSession->getFilters($project_id))
+            ->filterByProject($project_id);
 
         // Tasks
         if ($this->config->get('calendar_project_tasks', 'date_started') === 'date_creation') {
-            $events = $filter->copy()->filterByCreationDateRange($start, $end)->toDateTimeCalendarEvents('date_creation', 'date_completed');
-        }
-        else {
-            $events = $filter->copy()->filterByStartDateRange($start, $end)->toDateTimeCalendarEvents('date_started', 'date_completed');
+            $events = $filter->copy()->filterByCreationDateRange($start, $end)->setColumns('date_creation', 'date_completed')->format();
+        } else {
+            $events = $filter->copy()->filterByStartDateRange($start, $end)->setColumns('date_started', 'date_completed')->format();
         }
 
         // Tasks with due date
-        $events = array_merge($events, $filter->copy()->filterByDueDateRange($start, $end)->toAllDayCalendarEvents());
+        $events = array_merge($events, $filter->copy()->filterByDueDateRange($start, $end)->setColumns('date_due')->setFullDay()->format());
+
+        $events = $this->hook->merge('controller:calendar:project:events', $events, array(
+            'project_id' => $project_id,
+            'start' => $start,
+            'end' => $end,
+        ));
 
         $this->response->json($events);
     }
@@ -82,17 +70,16 @@ class Calendar extends Base
         $user_id = $this->request->getIntegerParam('user_id');
         $start = $this->request->getStringParam('start');
         $end = $this->request->getStringParam('end');
-        $filter = $this->taskFilter->create()->filterByOwner($user_id)->filterByStatus(TaskModel::STATUS_OPEN);
+        $filter = $this->taskFilterCalendarFormatter->create()->filterByOwner($user_id)->filterByStatus(TaskModel::STATUS_OPEN);
 
         // Task with due date
-        $events = $filter->copy()->filterByDueDateRange($start, $end)->toAllDayCalendarEvents();
+        $events = $filter->copy()->filterByDueDateRange($start, $end)->setColumns('date_due')->setFullDay()->format();
 
         // Tasks
         if ($this->config->get('calendar_user_tasks', 'date_started') === 'date_creation') {
-            $events = array_merge($events, $filter->copy()->filterByCreationDateRange($start, $end)->toDateTimeCalendarEvents('date_creation', 'date_completed'));
-        }
-        else {
-            $events = array_merge($events, $filter->copy()->filterByStartDateRange($start, $end)->toDateTimeCalendarEvents('date_started', 'date_completed'));
+            $events = array_merge($events, $filter->copy()->filterByCreationDateRange($start, $end)->setColumns('date_creation', 'date_completed')->format());
+        } else {
+            $events = array_merge($events, $filter->copy()->filterByStartDateRange($start, $end)->setColumns('date_started', 'date_completed')->format());
         }
 
         // Subtasks time tracking
@@ -100,10 +87,11 @@ class Calendar extends Base
             $events = array_merge($events, $this->subtaskTimeTracking->getUserCalendarEvents($user_id, $start, $end));
         }
 
-        // Subtask estimates
-        if ($this->config->get('calendar_user_subtasks_forecast') == 1) {
-            $events = array_merge($events, $this->subtaskForecast->getCalendarEvents($user_id, $end));
-        }
+        $events = $this->hook->merge('controller:calendar:user:events', $events, array(
+            'user_id' => $user_id,
+            'start' => $start,
+            'end' => $end,
+        ));
 
         $this->response->json($events);
     }
@@ -116,7 +104,6 @@ class Calendar extends Base
     public function save()
     {
         if ($this->request->isAjax() && $this->request->isPost()) {
-
             $values = $this->request->getJson();
 
             $this->taskModification->update(array(

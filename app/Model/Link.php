@@ -1,6 +1,6 @@
 <?php
 
-namespace Model;
+namespace Kanboard\Model;
 
 use PDO;
 use SimpleValidator\Validator;
@@ -123,10 +123,9 @@ class Link extends Base
             return false;
         }
 
-        $label_id = $this->db->getConnection()->getLastId();
+        $label_id = $this->db->getLastId();
 
         if (! empty($opposite_label)) {
-
             $this->db
                 ->table(self::TABLE)
                 ->insert(array(
@@ -138,7 +137,7 @@ class Link extends Base
                 ->table(self::TABLE)
                 ->eq('id', $label_id)
                 ->update(array(
-                    'opposite_id' => $this->db->getConnection()->getLastId()
+                    'opposite_id' => $this->db->getLastId()
                 ));
         }
 

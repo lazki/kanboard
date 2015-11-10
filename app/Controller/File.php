@@ -1,6 +1,8 @@
 <?php
 
-namespace Controller;
+namespace Kanboard\Controller;
+
+use Kanboard\Core\ObjectStorage\ObjectStorageException;
 
 /**
  * File controller
@@ -19,8 +21,7 @@ class File extends Base
     {
         $task = $this->getTask();
 
-        if ($this->request->isPost() && $this->file->uploadScreenshot($task['project_id'], $task['id'], $this->request->getValue('screenshot'))) {
-
+        if ($this->request->isPost() && $this->file->uploadScreenshot($task['project_id'], $task['id'], $this->request->getValue('screenshot')) !== false) {
             $this->session->flash(t('Screenshot uploaded successfully.'));
 
             if ($this->request->getStringParam('redirect') === 'board') {
@@ -60,7 +61,7 @@ class File extends Base
     {
         $task = $this->getTask();
 
-        if (! $this->file->upload($task['project_id'], $task['id'], 'files')) {
+        if (! $this->file->uploadFiles($task['project_id'], $task['id'], 'files')) {
             $this->session->flashError(t('Unable to upload the file.'));
         }
 
@@ -74,16 +75,19 @@ class File extends Base
      */
     public function download()
     {
-        $task = $this->getTask();
-        $file = $this->file->getById($this->request->getIntegerParam('file_id'));
-        $filename = FILES_DIR.$file['path'];
+        try {
+            $task = $this->getTask();
+            $file = $this->file->getById($this->request->getIntegerParam('file_id'));
 
-        if ($file['task_id'] == $task['id'] && file_exists($filename)) {
+            if ($file['task_id'] != $task['id']) {
+                $this->response->redirect($this->helper->url->to('task', 'show', array('task_id' => $task['id'], 'project_id' => $task['project_id'])));
+            }
+
             $this->response->forceDownload($file['name']);
-            $this->response->binary(file_get_contents($filename));
+            $this->objectStorage->output($file['path']);
+        } catch (ObjectStorageException $e) {
+            $this->logger->error($e->getMessage());
         }
-
-        $this->response->redirect($this->helper->url->to('task', 'show', array('task_id' => $task['id'], 'project_id' => $task['project_id'])));
     }
 
     /**
@@ -105,45 +109,48 @@ class File extends Base
     }
 
     /**
-     * Return the file content (work only for images)
+     * Display image
      *
      * @access public
      */
     public function image()
     {
-        $task = $this->getTask();
-        $file = $this->file->getById($this->request->getIntegerParam('file_id'));
-        $filename = FILES_DIR.$file['path'];
+        try {
+            $task = $this->getTask();
+            $file = $this->file->getById($this->request->getIntegerParam('file_id'));
 
-        if ($file['task_id'] == $task['id'] && file_exists($filename)) {
-            $metadata = getimagesize($filename);
-
-            if (isset($metadata['mime'])) {
-                $this->response->contentType($metadata['mime']);
-                readfile($filename);
+            if ($file['task_id'] == $task['id']) {
+                $this->response->contentType($this->file->getImageMimeType($file['name']));
+                $this->objectStorage->output($file['path']);
             }
+        } catch (ObjectStorageException $e) {
+            $this->logger->error($e->getMessage());
         }
     }
 
     /**
-     * Return image thumbnails
+     * Display image thumbnails
      *
      * @access public
      */
     public function thumbnail()
     {
-        $task = $this->getTask();
-        $file = $this->file->getById($this->request->getIntegerParam('file_id'));
-        $filename = FILES_DIR.$file['path'];
+        $this->response->contentType('image/jpeg');
 
-        if ($file['task_id'] == $task['id'] && file_exists($filename)) {
+        try {
+            $task = $this->getTask();
+            $file = $this->file->getById($this->request->getIntegerParam('file_id'));
 
-            $this->response->contentType('image/jpeg');
-            $this->file->generateThumbnail(
-                $filename,
-                $this->request->getIntegerParam('width'),
-                $this->request->getIntegerParam('height')
-            );
+            if ($file['task_id'] == $task['id']) {
+                $this->objectStorage->output($this->file->getThumbnailPath($file['path']));
+            }
+        } catch (ObjectStorageException $e) {
+            $this->logger->error($e->getMessage());
+
+            // Try to generate thumbnail on the fly for images uploaded before Kanboard < 1.0.19
+            $data = $this->objectStorage->get($file['path']);
+            $this->file->generateThumbnailFromData($file['path'], $data);
+            $this->objectStorage->output($this->file->getThumbnailPath($file['path']));
         }
     }
 

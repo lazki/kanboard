@@ -1,10 +1,11 @@
 <?php
 
-namespace Auth;
+namespace Kanboard\Auth;
 
-use Core\Request;
-use Event\AuthEvent;
-use Core\Security;
+use Kanboard\Core\Base;
+use Kanboard\Core\Http\Request;
+use Kanboard\Event\AuthEvent;
+use Kanboard\Core\Security\Token;
 
 /**
  * RememberMe model
@@ -88,7 +89,6 @@ class RememberMe extends Base
         $credentials = $this->readCookie();
 
         if ($credentials !== false) {
-
             $record = $this->find($credentials['token'], $credentials['sequence']);
 
             if ($record) {
@@ -119,31 +119,6 @@ class RememberMe extends Base
     }
 
     /**
-     * Update the database and the cookie with a new sequence
-     *
-     * @access public
-     */
-    public function refresh()
-    {
-        $credentials = $this->readCookie();
-
-        if ($credentials !== false) {
-
-            $record = $this->find($credentials['token'], $credentials['sequence']);
-
-            if ($record) {
-
-                // Update the sequence
-                $this->writeCookie(
-                    $record['token'],
-                    $this->update($record['token']),
-                    $record['expiration']
-                );
-            }
-        }
-    }
-
-    /**
      * Remove a session record
      *
      * @access public
@@ -169,7 +144,6 @@ class RememberMe extends Base
         $credentials = $this->readCookie();
 
         if ($credentials !== false) {
-
             $this->deleteCookie();
 
             $this->db
@@ -191,15 +165,16 @@ class RememberMe extends Base
      */
     public function create($user_id, $ip, $user_agent)
     {
-        $token = hash('sha256', $user_id.$user_agent.$ip.Security::generateToken());
-        $sequence = Security::generateToken();
+        $token = hash('sha256', $user_id.$user_agent.$ip.Token::getToken());
+        $sequence = Token::getToken();
         $expiration = time() + self::EXPIRATION;
 
         $this->cleanup($user_id);
 
-        $this->db
-             ->table(self::TABLE)
-             ->insert(array(
+        $this
+            ->db
+            ->table(self::TABLE)
+            ->insert(array(
                 'user_id' => $user_id,
                 'ip' => $ip,
                 'user_agent' => $user_agent,
@@ -207,7 +182,7 @@ class RememberMe extends Base
                 'sequence' => $sequence,
                 'expiration' => $expiration,
                 'date_creation' => time(),
-             ));
+            ));
 
         return array(
             'token' => $token,
@@ -241,7 +216,7 @@ class RememberMe extends Base
      */
     public function update($token)
     {
-        $new_sequence = Security::generateToken();
+        $new_sequence = Token::getToken();
 
         $this->db
              ->table(self::TABLE)
@@ -306,7 +281,7 @@ class RememberMe extends Base
             self::COOKIE_NAME,
             $this->encodeCookie($token, $sequence),
             $expiration,
-            BASE_URL_DIRECTORY,
+            $this->helper->url->dir(),
             null,
             Request::isHTTPS(),
             true
@@ -339,7 +314,7 @@ class RememberMe extends Base
             self::COOKIE_NAME,
             '',
             time() - 3600,
-            BASE_URL_DIRECTORY,
+            $this->helper->url->dir(),
             null,
             Request::isHTTPS(),
             true

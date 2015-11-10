@@ -1,10 +1,10 @@
 <?php
 
-namespace Model;
+namespace Kanboard\Model;
 
 use SimpleValidator\Validator;
 use SimpleValidator\Validators;
-use Core\Security;
+use Kanboard\Core\Security\Token;
 
 /**
  * Project model
@@ -111,7 +111,7 @@ class Project extends Base
      */
     public function isPrivate($project_id)
     {
-        return (bool) $this->db->table(self::TABLE)->eq('id', $project_id)->eq('is_private', 1)->count();
+        return $this->db->table(self::TABLE)->eq('id', $project_id)->eq('is_private', 1)->exists();
     }
 
     /**
@@ -123,6 +123,22 @@ class Project extends Base
     public function getAll()
     {
         return $this->db->table(self::TABLE)->asc('name')->findAll();
+    }
+
+    /**
+     * Get all projects with given Ids
+     *
+     * @access public
+     * @param  integer[]   $project_ids
+     * @return array
+     */
+    public function getAllByIds(array $project_ids)
+    {
+        if (empty($project_ids)) {
+            return array();
+        }
+
+        return $this->db->table(self::TABLE)->in('id', $project_ids)->asc('name')->findAll();
     }
 
     /**
@@ -261,6 +277,23 @@ class Project extends Base
     }
 
     /**
+     * Fetch more information for each project
+     *
+     * @access public
+     * @param  array    $projects
+     * @return array
+     */
+    public function applyProjectDetails(array $projects)
+    {
+        foreach ($projects as &$project) {
+            $this->getColumnStats($project);
+            $project = array_merge($project, $this->projectPermission->getProjectUsers($project['id']));
+        }
+
+        return $projects;
+    }
+
+    /**
      * Get project summary for a list of project
      *
      * @access public
@@ -276,7 +309,26 @@ class Project extends Base
         return $this->db
                     ->table(Project::TABLE)
                     ->in('id', $project_ids)
-                    ->filter(array($this, 'applyColumnStats'));
+                    ->callback(array($this, 'applyColumnStats'));
+    }
+
+    /**
+     * Get project details (users + columns) for a list of project
+     *
+     * @access public
+     * @param  array      $project_ids     List of project id
+     * @return \PicoDb\Table
+     */
+    public function getQueryProjectDetails(array $project_ids)
+    {
+        if (empty($project_ids)) {
+            return $this->db->table(Project::TABLE)->limit(0);
+        }
+
+        return $this->db
+                    ->table(Project::TABLE)
+                    ->in('id', $project_ids)
+                    ->callback(array($this, 'applyProjectDetails'));
     }
 
     /**
@@ -305,7 +357,7 @@ class Project extends Base
             return false;
         }
 
-        $project_id = $this->db->getConnection()->getLastId();
+        $project_id = $this->db->getLastId();
 
         if (! $this->board->create($project_id, $this->board->getUserColumns())) {
             $this->db->cancelTransaction();
@@ -391,7 +443,7 @@ class Project extends Base
      */
     public function exists($project_id)
     {
-        return $this->db->table(self::TABLE)->eq('id', $project_id)->count() === 1;
+        return $this->db->table(self::TABLE)->eq('id', $project_id)->exists();
     }
 
     /**
@@ -439,7 +491,7 @@ class Project extends Base
                $this->db
                     ->table(self::TABLE)
                     ->eq('id', $project_id)
-                    ->save(array('is_public' => 1, 'token' => Security::generateToken()));
+                    ->save(array('is_public' => 1, 'token' => Token::getToken()));
     }
 
     /**
@@ -472,6 +524,8 @@ class Project extends Base
             new Validators\Required('name', t('The project name is required')),
             new Validators\MaxLength('name', t('The maximum length is %d characters', 50), 50),
             new Validators\MaxLength('identifier', t('The maximum length is %d characters', 50), 50),
+            new Validators\MaxLength('start_date', t('The maximum length is %d characters', 10), 10),
+            new Validators\MaxLength('end_date', t('The maximum length is %d characters', 10), 10),
             new Validators\AlphaNumeric('identifier', t('This value must be alphanumeric')) ,
             new Validators\Unique('name', t('This project must be unique'), $this->db->getConnection(), self::TABLE),
             new Validators\Unique('identifier', t('The identifier must be unique'), $this->db->getConnection(), self::TABLE),

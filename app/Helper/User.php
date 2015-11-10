@@ -1,6 +1,6 @@
 <?php
 
-namespace Helper;
+namespace Kanboard\Helper;
 
 /**
  * User helpers
@@ -8,8 +8,37 @@ namespace Helper;
  * @package helper
  * @author  Frederic Guillot
  */
-class User extends \Core\Base
+class User extends \Kanboard\Core\Base
 {
+    /**
+     * Return true if the logged user as unread notifications
+     *
+     * @access public
+     * @return boolean
+     */
+    public function hasNotifications()
+    {
+        return $this->userUnreadNotification->hasNotifications($this->userSession->getId());
+    }
+
+    /**
+     * Get initials from a user
+     *
+     * @access public
+     * @param  string  $name
+     * @return string
+     */
+    public function getInitials($name)
+    {
+        $initials = '';
+
+        foreach (explode(' ', $name) as $string) {
+            $initials .= mb_substr($string, 0, 1);
+        }
+
+        return mb_strtoupper($initials);
+    }
+
     /**
      * Get user id
      *
@@ -59,19 +88,44 @@ class User extends \Core\Base
     }
 
     /**
-     * Proxy cache helper for acl::isManagerActionAllowed()
+     * Return if the logged user is project admin
      *
      * @access public
-     * @param  integer   $project_id
      * @return boolean
      */
-    public function isManager($project_id)
+    public function isProjectAdmin()
+    {
+        return $this->userSession->isProjectAdmin();
+    }
+
+    /**
+     * Check for project administration actions access (Project Admin group)
+     *
+     * @access public
+     * @return boolean
+     */
+    public function isProjectAdministrationAllowed($project_id)
     {
         if ($this->userSession->isAdmin()) {
             return true;
         }
 
-        return $this->memoryCache->proxy('acl', 'isManagerActionAllowed', $project_id);
+        return $this->memoryCache->proxy($this->container['acl'], 'handleProjectAdminPermissions', $project_id);
+    }
+
+    /**
+     * Check for project management actions access (Regular users who are Project Managers)
+     *
+     * @access public
+     * @return boolean
+     */
+    public function isProjectManagementAllowed($project_id)
+    {
+        if ($this->userSession->isAdmin()) {
+            return true;
+        }
+
+        return $this->memoryCache->proxy($this->container['acl'], 'handleProjectManagerPermissions', $project_id);
     }
 
     /**

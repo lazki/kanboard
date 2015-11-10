@@ -1,8 +1,8 @@
 <?php
 
-namespace Model;
+namespace Kanboard\Model;
 
-use Event\TaskEvent;
+use Kanboard\Event\TaskEvent;
 
 /**
  * Task Creation
@@ -25,10 +25,16 @@ class TaskCreation extends Base
             return 0;
         }
 
+        $position = empty($values['position']) ? 0 : $values['position'];
+
         $this->prepare($values);
         $task_id = $this->persist(Task::TABLE, $values);
 
         if ($task_id !== false) {
+            if ($position > 0 && $values['position'] > 1) {
+                $this->taskPosition->movePosition($values['project_id'], $task_id, $values['column_id'], $position, $values['swimlane_id'], false);
+            }
+
             $this->fireEvents($task_id, $values);
         }
 
@@ -43,9 +49,10 @@ class TaskCreation extends Base
      */
     public function prepare(array &$values)
     {
-        $this->dateParser->convert($values, array('date_due', 'date_started'));
+        $this->dateParser->convert($values, array('date_due'));
+        $this->dateParser->convert($values, array('date_started'), true);
         $this->removeFields($values, array('another_task'));
-        $this->resetFields($values, array('owner_id', 'swimlane_id', 'date_due', 'score', 'category_id', 'time_estimated'));
+        $this->resetFields($values, array('date_started', 'creator_id', 'owner_id', 'swimlane_id', 'date_due', 'score', 'category_id', 'time_estimated'));
 
         if (empty($values['column_id'])) {
             $values['column_id'] = $this->board->getFirstColumn($values['project_id']);
@@ -57,6 +64,10 @@ class TaskCreation extends Base
 
         if (empty($values['title'])) {
             $values['title'] = t('Untitled');
+        }
+
+        if ($this->userSession->isLogged()) {
+            $values['creator_id'] = $this->userSession->getId();
         }
 
         $values['swimlane_id'] = empty($values['swimlane_id']) ? 0 : $values['swimlane_id'];

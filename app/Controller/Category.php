@@ -1,6 +1,6 @@
 <?php
 
-namespace Controller;
+namespace Kanboard\Controller;
 
 /**
  * Category management
@@ -23,7 +23,7 @@ class Category extends Base
 
         if (empty($category)) {
             $this->session->flashError(t('Category not found.'));
-            $this->response->redirect('?controller=category&action=index&project_id='.$project_id);
+            $this->response->redirect($this->helper->url->to('category', 'index', array('project_id' => $project_id)));
         }
 
         return $category;
@@ -60,12 +60,10 @@ class Category extends Base
         list($valid, $errors) = $this->category->validateCreation($values);
 
         if ($valid) {
-
             if ($this->category->create($values)) {
                 $this->session->flash(t('Your category have been created successfully.'));
-                $this->response->redirect('?controller=category&action=index&project_id='.$project['id']);
-            }
-            else {
+                $this->response->redirect($this->helper->url->to('category', 'index', array('project_id' => $project['id'])));
+            } else {
                 $this->session->flashError(t('Unable to create your category.'));
             }
         }
@@ -104,12 +102,10 @@ class Category extends Base
         list($valid, $errors) = $this->category->validateModification($values);
 
         if ($valid) {
-
             if ($this->category->update($values)) {
                 $this->session->flash(t('Your category have been updated successfully.'));
-                $this->response->redirect('?controller=category&action=index&project_id='.$project['id']);
-            }
-            else {
+                $this->response->redirect($this->helper->url->to('category', 'index', array('project_id' => $project['id'])));
+            } else {
                 $this->session->flashError(t('Unable to update your category.'));
             }
         }
@@ -151,6 +147,6 @@ class Category extends Base
             $this->session->flashError(t('Unable to remove this category.'));
         }
 
-        $this->response->redirect('?controller=category&action=index&project_id='.$project['id']);
+        $this->response->redirect($this->helper->url->to('category', 'index', array('project_id' => $project['id'])));
     }
 }

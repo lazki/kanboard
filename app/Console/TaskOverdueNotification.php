@@ -1,6 +1,6 @@
 <?php
 
-namespace Console;
+namespace Kanboard\Console;
 
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
@@ -19,7 +19,7 @@ class TaskOverdueNotification extends Base
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $tasks = $this->notification->sendOverdueTaskNotifications();
+        $tasks = $this->overdueNotification->sendOverdueTaskNotifications();
 
         if ($input->getOption('show')) {
             $this->showTable($output, $tasks);

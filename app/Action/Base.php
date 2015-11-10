@@ -1,8 +1,8 @@
 <?php
 
-namespace Action;
+namespace Kanboard\Action;
 
-use Event\GenericEvent;
+use Kanboard\Event\GenericEvent;
 use Pimple\Container;
 
 /**
@@ -11,7 +11,7 @@ use Pimple\Container;
  * @package action
  * @author  Frederic Guillot
  */
-abstract class Base extends \Core\Base
+abstract class Base extends \Kanboard\Core\Base
 {
     /**
      * Flag for called listener
@@ -127,6 +127,17 @@ abstract class Base extends \Core\Base
     }
 
     /**
+     * Get project id
+     *
+     * @access public
+     * @return integer
+     */
+    public function getProjectId()
+    {
+        return $this->project_id;
+    }
+
+    /**
      * Set an user defined parameter
      *
      * @access public
@@ -222,12 +233,17 @@ abstract class Base extends \Core\Base
         }
 
         $data = $event->getAll();
+        $result = false;
 
         if ($this->isExecutable($data)) {
             $this->called = true;
-            return $this->doAction($data);
+            $result = $this->doAction($data);
         }
 
-        return false;
+        if (DEBUG) {
+            $this->container['logger']->debug(get_called_class().' => '.($result ? 'true' : 'false'));
+        }
+
+        return $result;
     }
 }

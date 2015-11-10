@@ -1,8 +1,8 @@
 <?php
 
-namespace Controller;
+namespace Kanboard\Controller;
 
-use Model\Subtask as SubtaskModel;
+use Kanboard\Model\Subtask as SubtaskModel;
 
 /**
  * Subtask controller
@@ -66,19 +66,17 @@ class Subtask extends Base
         list($valid, $errors) = $this->subtask->validateCreation($values);
 
         if ($valid) {
-
             if ($this->subtask->create($values)) {
                 $this->session->flash(t('Sub-task added successfully.'));
-            }
-            else {
+            } else {
                 $this->session->flashError(t('Unable to create your sub-task.'));
             }
 
             if (isset($values['another_subtask']) && $values['another_subtask'] == 1) {
-                $this->response->redirect('?controller=subtask&action=create&task_id='.$task['id'].'&another_subtask=1&project_id='.$task['project_id']);
+                $this->response->redirect($this->helper->url->to('subtask', 'create', array('project_id' => $task['project_id'], 'task_id' => $task['id'], 'another_subtask' => 1)));
             }
 
-            $this->response->redirect('?controller=task&action=show&task_id='.$task['id'].'&project_id='.$task['project_id'].'#subtasks');
+            $this->response->redirect($this->helper->url->to('task', 'show', array('project_id' => $task['project_id'], 'task_id' => $task['id']), 'subtasks'));
         }
 
         $this->create($values, $errors);
@@ -118,15 +116,13 @@ class Subtask extends Base
         list($valid, $errors) = $this->subtask->validateModification($values);
 
         if ($valid) {
-
             if ($this->subtask->update($values)) {
                 $this->session->flash(t('Sub-task updated successfully.'));
-            }
-            else {
+            } else {
                 $this->session->flashError(t('Unable to update your sub-task.'));
             }
 
-            $this->response->redirect('?controller=task&action=show&task_id='.$task['id'].'&project_id='.$task['project_id'].'#subtasks');
+            $this->response->redirect($this->helper->url->to('task', 'show', array('project_id' => $task['project_id'], 'task_id' => $task['id']), 'subtasks'));
         }
 
         $this->edit($values, $errors);
@@ -161,12 +157,11 @@ class Subtask extends Base
 
         if ($this->subtask->remove($subtask['id'])) {
             $this->session->flash(t('Sub-task removed successfully.'));
-        }
-        else {
+        } else {
             $this->session->flashError(t('Unable to remove this sub-task.'));
         }
 
-        $this->response->redirect('?controller=task&action=show&task_id='.$task['id'].'&project_id='.$task['project_id'].'#subtasks');
+        $this->response->redirect($this->helper->url->to('task', 'show', array('project_id' => $task['project_id'], 'task_id' => $task['id']), 'subtasks'));
     }
 
     /**
@@ -183,10 +178,9 @@ class Subtask extends Base
         $this->subtask->toggleStatus($subtask['id']);
 
         if ($redirect === 'board') {
-
             $this->session['has_subtask_inprogress'] = $this->subtask->hasSubtaskInProgress($this->userSession->getId());
 
-            $this->response->html($this->template->render('board/subtasks', array(
+            $this->response->html($this->template->render('board/tooltip_subtasks', array(
                 'subtasks' => $this->subtask->getAll($task['id']),
                 'task' => $task,
             )));
@@ -256,7 +250,7 @@ class Subtask extends Base
             case 'dashboard':
                 $this->response->redirect($this->helper->url->to('app', 'index'));
             default:
-                $this->response->redirect($this->helper->url->to('task', 'show', array('task_id' => $task['id'], 'project_id' => $task['project_id'])));
+                $this->response->redirect($this->helper->url->to('task', 'show', array('task_id' => $task['id'], 'project_id' => $task['project_id']), 'subtasks'));
         }
     }
 
@@ -275,6 +269,6 @@ class Subtask extends Base
         $method = $direction === 'up' ? 'moveUp' : 'moveDown';
 
         $this->subtask->$method($task_id, $subtask_id);
-        $this->response->redirect($this->helper->url->to('task', 'show', array('project_id' => $project_id, 'task_id' => $task_id)).'#subtasks');
+        $this->response->redirect($this->helper->url->to('task', 'show', array('project_id' => $project_id, 'task_id' => $task_id), 'subtasks'));
     }
 }

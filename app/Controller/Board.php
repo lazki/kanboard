@@ -1,6 +1,6 @@
 <?php
 
-namespace Controller;
+namespace Kanboard\Controller;
 
 /**
  * Board controller
@@ -26,14 +26,10 @@ class Board extends Base
             $this->forbidden(true);
         }
 
-        list($categories_listing, $categories_description) = $this->category->getBoardCategories($project['id']);
-
         // Display the board with a specific layout
-        $this->response->html($this->template->layout('board/public', array(
+        $this->response->html($this->template->layout('board/view_public', array(
             'project' => $project,
             'swimlanes' => $this->board->getBoard($project['id']),
-            'categories_listing' => $categories_listing,
-            'categories_description' => $categories_description,
             'title' => $project['name'],
             'description' => $project['description'],
             'no_layout' => true,
@@ -45,65 +41,23 @@ class Board extends Base
     }
 
     /**
-     * Redirect the user to the default project
-     *
-     * @access public
-     */
-    public function index()
-    {
-        $last_seen_project_id = $this->userSession->getLastSeenProjectId();
-        $favorite_project_id = $this->userSession->getFavoriteProjectId();
-        $project_id = $last_seen_project_id ?: $favorite_project_id;
-
-        if (! $project_id) {
-            $projects = $this->projectPermission->getAllowedProjects($this->userSession->getId());
-
-            if (empty($projects)) {
-
-                if ($this->userSession->isAdmin()) {
-                    $this->redirectNoProject();
-                }
-
-                $this->forbidden();
-            }
-
-            $project_id = key($projects);
-        }
-
-        $this->show($project_id);
-    }
-
-    /**
      * Show a board for a given project
      *
      * @access public
-     * @param  integer   $project_id    Default project id
      */
-    public function show($project_id = 0)
+    public function show()
     {
-        $project = $this->getProject($project_id);
-        $projects = $this->projectPermission->getAllowedProjects($this->userSession->getId());
+        $params = $this->getProjectFilters('board', 'show');
 
-        $board_selector = $projects;
-        unset($board_selector[$project['id']]);
-
-        $this->userSession->storeLastSeenProjectId($project['id']);
-
-        list($categories_listing, $categories_description) = $this->category->getBoardCategories($project['id']);
-
-        $this->response->html($this->template->layout('board/index', array(
-            'users' => $this->projectPermission->getMemberList($project['id'], true, true),
-            'projects' => $projects,
-            'project' => $project,
-            'swimlanes' => $this->board->getBoard($project['id']),
-            'categories_listing' => $categories_listing,
-            'categories_description' => $categories_description,
-            'title' => $project['name'],
-            'description' => $project['description'],
-            'board_selector' => $board_selector,
+        $this->response->html($this->template->layout('board/view_private', array(
+            'categories_list' => $this->category->getList($params['project']['id'], false),
+            'users_list' => $this->projectPermission->getMemberList($params['project']['id'], false),
+            'custom_filters_list' => $this->customFilter->getAll($params['project']['id'], $this->userSession->getId()),
+            'swimlanes' => $this->taskFilter->search($params['filters']['search'])->getBoard($params['project']['id']),
+            'description' => $params['project']['description'],
             'board_private_refresh_interval' => $this->config->get('board_private_refresh_interval'),
             'board_highlight_period' => $this->config->get('board_highlight_period'),
-        )));
+        ) + $params));
     }
 
     /**
@@ -137,19 +91,7 @@ class Board extends Base
             return $this->response->status(400);
         }
 
-        list($categories_listing, $categories_description) = $this->category->getBoardCategories($project_id);
-
-        $this->response->html(
-            $this->template->render('board/show', array(
-                'project' => $this->project->getById($project_id),
-                'swimlanes' => $this->board->getBoard($project_id),
-                'categories_listing' => $categories_listing,
-                'categories_description' => $categories_description,
-                'board_private_refresh_interval' => $this->config->get('board_private_refresh_interval'),
-                'board_highlight_period' => $this->config->get('board_highlight_period'),
-            )),
-            201
-        );
+        $this->response->html($this->renderBoard($project_id), 201);
     }
 
     /**
@@ -174,18 +116,30 @@ class Board extends Base
             return $this->response->status(304);
         }
 
-        list($categories_listing, $categories_description) = $this->category->getBoardCategories($project_id);
+        $this->response->html($this->renderBoard($project_id));
+    }
 
-        $this->response->html(
-            $this->template->render('board/show', array(
-                'project' => $this->project->getById($project_id),
-                'swimlanes' => $this->board->getBoard($project_id),
-                'categories_listing' => $categories_listing,
-                'categories_description' => $categories_description,
-                'board_private_refresh_interval' => $this->config->get('board_private_refresh_interval'),
-                'board_highlight_period' => $this->config->get('board_highlight_period'),
-            ))
-        );
+    /**
+     * Reload the board with new filters
+     *
+     * @access public
+     */
+    public function reload()
+    {
+        if (! $this->request->isAjax()) {
+            return $this->response->status(403);
+        }
+
+        $project_id = $this->request->getIntegerParam('project_id');
+
+        if (! $this->projectPermission->isUserAllowed($project_id, $this->userSession->getId())) {
+            $this->response->text('Forbidden', 403);
+        }
+
+        $values = $this->request->getJson();
+        $this->userSession->setFilters($project_id, empty($values['search']) ? '' : $values['search']);
+
+        $this->response->html($this->renderBoard($project_id));
     }
 
     /**
@@ -196,7 +150,7 @@ class Board extends Base
     public function tasklinks()
     {
         $task = $this->getTask();
-        $this->response->html($this->template->render('board/tasklinks', array(
+        $this->response->html($this->template->render('board/tooltip_tasklinks', array(
             'links' => $this->taskLink->getAll($task['id']),
             'task' => $task,
         )));
@@ -210,7 +164,7 @@ class Board extends Base
     public function subtasks()
     {
         $task = $this->getTask();
-        $this->response->html($this->template->render('board/subtasks', array(
+        $this->response->html($this->template->render('board/tooltip_subtasks', array(
             'subtasks' => $this->subtask->getAll($task['id']),
             'task' => $task,
         )));
@@ -225,9 +179,8 @@ class Board extends Base
     {
         $task = $this->getTask();
 
-        $this->response->html($this->template->render('board/files', array(
-            'files' => $this->file->getAllDocuments($task['id']),
-            'images' => $this->file->getAllImages($task['id']),
+        $this->response->html($this->template->render('board/tooltip_files', array(
+            'files' => $this->file->getAll($task['id']),
             'task' => $task,
         )));
     }
@@ -241,8 +194,8 @@ class Board extends Base
     {
         $task = $this->getTask();
 
-        $this->response->html($this->template->render('board/comments', array(
-            'comments' => $this->comment->getAll($task['id'])
+        $this->response->html($this->template->render('board/tooltip_comments', array(
+            'comments' => $this->comment->getAll($task['id'], $this->userSession->getCommentSorting())
         )));
     }
 
@@ -255,7 +208,7 @@ class Board extends Base
     {
         $task = $this->getTask();
 
-        $this->response->html($this->template->render('board/description', array(
+        $this->response->html($this->template->render('board/tooltip_description', array(
             'task' => $task
         )));
     }
@@ -270,7 +223,7 @@ class Board extends Base
         $task = $this->getTask();
         $project = $this->project->getById($task['project_id']);
 
-        $this->response->html($this->template->render('board/assignee', array(
+        $this->response->html($this->template->render('board/popover_assignee', array(
             'values' => $task,
             'users_list' => $this->projectPermission->getMemberList($project['id']),
             'project' => $project,
@@ -286,12 +239,11 @@ class Board extends Base
     {
         $values = $this->request->getValues();
 
-        list($valid,) = $this->taskValidator->validateAssigneeModification($values);
+        list($valid, ) = $this->taskValidator->validateAssigneeModification($values);
 
         if ($valid && $this->taskModification->update($values)) {
             $this->session->flash(t('Task updated successfully.'));
-        }
-        else {
+        } else {
             $this->session->flashError(t('Unable to update your task.'));
         }
 
@@ -308,7 +260,7 @@ class Board extends Base
         $task = $this->getTask();
         $project = $this->project->getById($task['project_id']);
 
-        $this->response->html($this->template->render('board/category', array(
+        $this->response->html($this->template->render('board/popover_category', array(
             'values' => $task,
             'categories_list' => $this->category->getList($project['id']),
             'project' => $project,
@@ -324,12 +276,11 @@ class Board extends Base
     {
         $values = $this->request->getValues();
 
-        list($valid,) = $this->taskValidator->validateCategoryModification($values);
+        list($valid, ) = $this->taskValidator->validateCategoryModification($values);
 
         if ($valid && $this->taskModification->update($values)) {
             $this->session->flash(t('Task updated successfully.'));
-        }
-        else {
+        } else {
             $this->session->flashError(t('Unable to update your task.'));
         }
 
@@ -366,5 +317,69 @@ class Board extends Base
             'recurrence_timeframe_list' => $this->task->getRecurrenceTimeframeList(),
             'recurrence_basedate_list' => $this->task->getRecurrenceBasedateList(),
         )));
+    }
+
+    /**
+     * Display swimlane description in tooltip
+     *
+     * @access public
+     */
+    public function swimlane()
+    {
+        $this->getProject();
+        $swimlane = $this->swimlane->getById($this->request->getIntegerParam('swimlane_id'));
+        $this->response->html($this->template->render('board/tooltip_description', array('task' => $swimlane)));
+    }
+
+    /**
+     * Enable collapsed mode
+     *
+     * @access public
+     */
+    public function collapse()
+    {
+        $this->changeDisplayMode(true);
+    }
+
+    /**
+     * Enable expanded mode
+     *
+     * @access public
+     */
+    public function expand()
+    {
+        $this->changeDisplayMode(false);
+    }
+
+    /**
+     * Change display mode
+     *
+     * @access private
+     */
+    private function changeDisplayMode($mode)
+    {
+        $project_id = $this->request->getIntegerParam('project_id');
+        $this->userSession->setBoardDisplayMode($project_id, $mode);
+
+        if ($this->request->isAjax()) {
+            $this->response->html($this->renderBoard($project_id));
+        } else {
+            $this->response->redirect($this->helper->url->to('board', 'show', array('project_id' => $project_id)));
+        }
+    }
+
+    /**
+     * Render board
+     *
+     * @access private
+     */
+    private function renderBoard($project_id)
+    {
+        return $this->template->render('board/table_container', array(
+            'project' => $this->project->getById($project_id),
+            'swimlanes' => $this->taskFilter->search($this->userSession->getFilters($project_id))->getBoard($project_id),
+            'board_private_refresh_interval' => $this->config->get('board_private_refresh_interval'),
+            'board_highlight_period' => $this->config->get('board_highlight_period'),
+        ));
     }
 }

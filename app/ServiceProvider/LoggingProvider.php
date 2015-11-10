@@ -1,6 +1,6 @@
 <?php
 
-namespace ServiceProvider;
+namespace Kanboard\ServiceProvider;
 
 use Psr\Log\LogLevel;
 use Pimple\Container;
@@ -13,11 +13,13 @@ class LoggingProvider implements ServiceProviderInterface
 {
     public function register(Container $container)
     {
-        $syslog = new Syslog('kanboard');
-        $syslog->setLevel(LogLevel::ERROR);
-
         $logger = new Logger;
-        $logger->setLogger($syslog);
+
+        if (ENABLE_SYSLOG) {
+            $syslog = new Syslog('kanboard');
+            $syslog->setLevel(LogLevel::ERROR);
+            $logger->setLogger($syslog);
+        }
 
         if (DEBUG) {
             $logger->setLogger(new File(DEBUG_FILE));

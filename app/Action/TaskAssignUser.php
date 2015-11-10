@@ -1,8 +1,9 @@
 <?php
 
-namespace Action;
+namespace Kanboard\Action;
 
-use Integration\GithubWebhook;
+use Kanboard\Integration\GithubWebhook;
+use Kanboard\Integration\BitbucketWebhook;
 
 /**
  * Assign a task to someone
@@ -22,6 +23,7 @@ class TaskAssignUser extends Base
     {
         return array(
             GithubWebhook::EVENT_ISSUE_ASSIGNEE_CHANGE,
+            BitbucketWebhook::EVENT_ISSUE_ASSIGNEE_CHANGE,
         );
     }
 

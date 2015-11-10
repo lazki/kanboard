@@ -1,12 +1,12 @@
 <?php
 
-namespace Subscriber;
+namespace Kanboard\Subscriber;
 
-use Event\TaskEvent;
-use Model\Task;
+use Kanboard\Event\TaskEvent;
+use Kanboard\Model\Task;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
-class ProjectDailySummarySubscriber extends \Core\Base implements EventSubscriberInterface
+class ProjectDailySummarySubscriber extends \Kanboard\Core\Base implements EventSubscriberInterface
 {
     public static function getSubscribedEvents()
     {
@@ -22,7 +22,8 @@ class ProjectDailySummarySubscriber extends \Core\Base implements EventSubscribe
     public function execute(TaskEvent $event)
     {
         if (isset($event['project_id'])) {
-            $this->projectDailySummary->updateTotals($event['project_id'], date('Y-m-d'));
+            $this->projectDailyColumnStats->updateTotals($event['project_id'], date('Y-m-d'));
+            $this->projectDailyStats->updateTotals($event['project_id'], date('Y-m-d'));
         }
     }
 }

@@ -1,6 +1,8 @@
 <?php
 
-namespace Api;
+namespace Kanboard\Api;
+
+use Kanboard\Core\ObjectStorage\ObjectStorageException;
 
 /**
  * File API controller
@@ -8,7 +10,7 @@ namespace Api;
  * @package  api
  * @author   Frederic Guillot
  */
-class File extends Base
+class File extends \Kanboard\Core\Base
 {
     public function getFile($file_id)
     {
@@ -22,27 +24,31 @@ class File extends Base
 
     public function downloadFile($file_id)
     {
-        $file = $this->file->getById($file_id);
+        try {
+            $file = $this->file->getById($file_id);
 
-        if (! empty($file)) {
-
-            $filename = FILES_DIR.$file['path'];
-
-            if (file_exists($filename)) {
-                return base64_encode(file_get_contents($filename));
+            if (! empty($file)) {
+                return base64_encode($this->objectStorage->get($file['path']));
             }
+        } catch (ObjectStorageException $e) {
+            $this->logger->error($e->getMessage());
         }
 
         return '';
     }
 
-    public function createFile($project_id, $task_id, $filename, $is_image, &$blob)
+    public function createFile($project_id, $task_id, $filename, $blob)
     {
-        return $this->file->uploadContent($project_id, $task_id, $filename, $is_image, $blob);
+        return $this->file->uploadContent($project_id, $task_id, $filename, $blob);
     }
 
     public function removeFile($file_id)
     {
         return $this->file->remove($file_id);
+    }
+
+    public function removeAllFiles($task_id)
+    {
+        return $this->file->removeAll($task_id);
     }
 }
